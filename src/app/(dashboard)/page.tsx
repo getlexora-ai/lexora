@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Upload, Pencil, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { UploadModal } from "@/components/upload-modal";
 import { fileStore } from "@/lib/file-store";
+import { contractStore, SavedContract } from "@/lib/contract-store";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,15 +32,7 @@ const LOW_COLOR    = "#3b82f6"; // blue
 type DocEntry    = { month: string; docs: number };
 type FixEntry    = { month: string; fixes: number };
 type RiskEntry   = { month: string; high: number; medium: number; low: number };
-type RiskLevel   = "High" | "Medium" | "Low";
-type Contract    = {
-  id: string;
-  name: string;
-  risk: RiskLevel;
-  issues: number;
-  issuesFixed: number;
-  saved: string;
-};
+type Contract    = SavedContract;
 
 const docsConfig  = { docs:   { label: "Documents", color: DOCS_COLOR  } };
 const fixesConfig = { fixes:  { label: "AI Fixes",  color: FIXES_COLOR } };
@@ -56,10 +49,21 @@ const axisProps = {
 } as const;
 
 export default function DashboardPage() {
-  // --- Summary stats ---
-  const [totalDocuments, _setTotalDocuments] = useState(47);
-  const [totalFixes, _setTotalFixes]         = useState(128);
-  const [currentRisk, _setCurrentRisk]       = useState({ high: 5, medium: 10, low: 9 });
+  const [contracts, setContracts] = useState<Contract[]>([]);
+
+  // Load from localStorage on mount
+  useEffect(() => {
+    setContracts(contractStore.getAll());
+  }, []);
+
+  // --- Summary stats derived from real contracts ---
+  const totalDocuments = contracts.length;
+  const totalFixes     = contracts.reduce((s, c) => s + c.issuesFixed, 0);
+  const currentRisk    = {
+    high:   contracts.filter(c => c.risk === "High").length,
+    medium: contracts.filter(c => c.risk === "Medium").length,
+    low:    contracts.filter(c => c.risk === "Low").length,
+  };
 
   // --- Chart series data ---
   const [documentsData, _setDocumentsData] = useState<DocEntry[]>([    { month: "Oct", docs: 4 },
@@ -88,13 +92,6 @@ export default function DashboardPage() {
     { month: "Mar", high: 5, medium: 10, low: 9  },
   ]);
 
-  const [contracts, setContracts] = useState<Contract[]>([
-    { id: "1", name: "Master Service Agreement v3.0",    risk: "High",   issues: 4, issuesFixed: 2, saved: "Mar 18, 2026" },
-    { id: "2", name: "NDA — Acme Corp",                  risk: "Low",    issues: 0, issuesFixed: 0, saved: "Mar 15, 2026" },
-    { id: "3", name: "Vendor Agreement — SupplyCo",      risk: "Medium", issues: 2, issuesFixed: 1, saved: "Mar 10, 2026" },
-    { id: "4", name: "Employment Contract — J. Daniels", risk: "Low",    issues: 1, issuesFixed: 1, saved: "Feb 28, 2026" },
-    { id: "5", name: "SaaS Subscription Agreement",      risk: "High",   issues: 6, issuesFixed: 3, saved: "Feb 20, 2026" },
-  ]);
 
   const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
@@ -107,13 +104,13 @@ export default function DashboardPage() {
   }
 
   function saveEdit(id: string) {
-    setContracts(prev =>
-      prev.map(c => c.id === id ? { ...c, name: editName } : c)
-    );
+    contractStore.rename(id, editName);
+    setContracts(prev => prev.map(c => c.id === id ? { ...c, name: editName } : c));
     setEditingId(null);
   }
 
   function deleteContract(id: string) {
+    contractStore.remove(id);
     setContracts(prev => prev.filter(c => c.id !== id));
   }
 
@@ -278,7 +275,16 @@ export default function DashboardPage() {
                 </TableRow>
               )}
               {contracts.map(contract => (
-                <TableRow key={contract.id} className="h-16">
+                <TableRow
+                  key={contract.id}
+                  className="h-16 cursor-pointer hover:bg-muted/40 transition-colors"
+                  onClick={() => {
+                    if (editingId === contract.id) return;
+                    router.push(
+                      `/review?file=${encodeURIComponent(contract.name)}&type=${encodeURIComponent(contract.contractType ?? "")}&contractId=${contract.id}`
+                    );
+                  }}
+                >
                   <TableCell className="pl-6 font-medium">
                     {editingId === contract.id ? (
                       <input
@@ -286,6 +292,7 @@ export default function DashboardPage() {
                         value={editName}
                         onChange={e => setEditName(e.target.value)}
                         onKeyDown={e => e.key === "Enter" && saveEdit(contract.id)}
+                        onClick={e => e.stopPropagation()}
                         autoFocus
                       />
                     ) : (
@@ -315,7 +322,7 @@ export default function DashboardPage() {
                   <TableCell className="text-muted-foreground">{contract.issues}</TableCell>
                   <TableCell className="text-muted-foreground">{contract.issuesFixed}</TableCell>
                   <TableCell className="text-muted-foreground">{contract.saved}</TableCell>
-                  <TableCell className="pr-6 text-right">
+                  <TableCell className="pr-6 text-right" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1">
                       {editingId === contract.id ? (
                         <Button size="sm" onClick={() => saveEdit(contract.id)}>

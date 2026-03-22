@@ -6,6 +6,7 @@ import { ArrowLeft, FileText, CheckCircle2, XCircle, AlertCircle } from "lucide-
 import { Button } from "@/components/ui/button";
 import { fileStore } from "@/lib/file-store";
 import { analysisStore } from "@/lib/analysis-store";
+import { contractStore, SavedContract } from "@/lib/contract-store";
 
 type StepStatus = "pending" | "active" | "complete";
 
@@ -43,10 +44,11 @@ function AnalysisContent() {
   const fileName     = searchParams.get("file") ?? "Document";
   const contractType = searchParams.get("type") ?? "";
 
-  const [steps, setSteps]     = useState<Step[]>(INITIAL_STEPS);
+  const [steps, setSteps]       = useState<Step[]>(INITIAL_STEPS);
   const [progress, setProgress] = useState(0);
   const [done, setDone]         = useState(false);
   const [error, setError]       = useState<string | null>(null);
+  const [contractId, setContractId] = useState<string | null>(null);
 
   function setStepStatus(index: number, status: StepStatus) {
     setSteps(prev => prev.map((s, i) => i === index ? { ...s, status } : s));
@@ -120,6 +122,27 @@ function AnalysisContent() {
         // Store results for the review page
         analysisStore.set({ extractedText: text, clauses });
         fileStore.clear();
+
+        // Persist contract to localStorage
+        const highestRisk: SavedContract["risk"] = clauses.some((c: { type: string }) => c.type === "high")
+          ? "High"
+          : clauses.some((c: { type: string }) => c.type === "medium")
+          ? "Medium"
+          : "Low";
+
+        const contractId = `contract-${Date.now()}`;
+        const saved: SavedContract = {
+          id: contractId,
+          name: fileName,
+          contractType,
+          risk: highestRisk,
+          issues: clauses.length,
+          issuesFixed: 0,
+          saved: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+        };
+        contractStore.add(saved);
+        contractStore.setData(contractId, { extractedText: text, clauses });
+        setContractId(contractId);
 
         setStepStatus(2, "complete");
         setProgress(100);
@@ -280,7 +303,7 @@ function AnalysisContent() {
                 <Button
                   size="sm"
                   className="gap-2"
-                  onClick={() => router.push(`/review?file=${encodeURIComponent(fileName)}&type=${encodeURIComponent(contractType)}`)}
+                  onClick={() => router.push(`/review?file=${encodeURIComponent(fileName)}&type=${encodeURIComponent(contractType)}${contractId ? `&contractId=${contractId}` : ""}`)}
                 >
                   <span className="relative flex h-2 w-2">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary-foreground opacity-75" />

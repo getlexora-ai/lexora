@@ -1,21 +1,13 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import "quill/dist/quill.snow.css";
+
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import {
-  ArrowLeft,
-  Bold,
-  Italic,
-  Underline,
-  List,
-  ListOrdered,
-  Link,
-  Image,
-  ChevronRight,
-  Sparkles,
-} from "lucide-react";
+import { ArrowLeft, ChevronRight, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { analysisStore, RiskClause } from "@/lib/analysis-store";
+import { contractStore } from "@/lib/contract-store";
 
 type Risk = "high" | "medium" | "low";
 
@@ -42,38 +34,33 @@ const RISK_STYLES: Record<Risk, { border: string; badge: string; title: string; 
 
 const NAV_TABS = ["Review", "Compare", "History", "Approval"];
 
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
+const QUILL_TOOLBAR = [
+  ["bold", "italic", "underline", "strike"],
+  [{ header: [1, 2, 3, false] }],
+  [{ list: "ordered" }, { list: "bullet" }],
+  ["link"],
+  ["clean"],
+];
 
 function normalise(s: string) {
   return s.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
-// Find the start index in `text` that best matches `needle`,
-// tolerating whitespace differences and case.
 function findPassage(text: string, needle: string): { start: number; end: number } | null {
-  // 1. Exact match first
   const exact = text.indexOf(needle);
   if (exact !== -1) return { start: exact, end: exact + needle.length };
 
-  // 2. Normalise both sides and search
   const normNeedle = normalise(needle);
   const normText   = normalise(text);
   const normIdx    = normText.indexOf(normNeedle);
   if (normIdx === -1) return null;
 
-  // Map normalised index back to original text by walking character by character
   let origIdx = 0;
   let normCount = 0;
   while (origIdx < text.length && normCount < normIdx) {
     if (/\s/.test(text[origIdx])) {
-      // skip all consecutive whitespace in original (counts as 1 space in normalised)
       while (origIdx < text.length && /\s/.test(text[origIdx])) origIdx++;
-      normCount++; // the single space
+      normCount++;
     } else {
       origIdx++;
       normCount++;
@@ -81,7 +68,6 @@ function findPassage(text: string, needle: string): { start: number; end: number
   }
   const start = origIdx;
 
-  // Walk forward by the length of the normalised needle
   let normLen = 0;
   while (origIdx < text.length && normLen < normNeedle.length) {
     if (/\s/.test(text[origIdx])) {
@@ -96,64 +82,166 @@ function findPassage(text: string, needle: string): { start: number; end: number
   return { start, end: origIdx };
 }
 
-function buildEditorHtml(text: string, activeOriginal: string | null): string {
-  if (!activeOriginal) return escapeHtml(text);
-
-  const match = findPassage(text, activeOriginal);
-  if (!match) return escapeHtml(text);
-
-  const before = escapeHtml(text.slice(0, match.start));
-  const clause = escapeHtml(text.slice(match.start, match.end));
-  const after  = escapeHtml(text.slice(match.end));
-
-  return `${before}<mark class="bg-yellow-200 rounded-sm px-0.5">${clause}</mark>${after}`;
-}
-
 function ReviewContent() {
   const router       = useRouter();
   const searchParams = useSearchParams();
   const fileName     = searchParams.get("file") ?? "Document";
   const contractType = searchParams.get("type") ?? "";
+  const contractId   = searchParams.get("contractId");
 
-  const result = analysisStore.get();
+  // diskResult is always most up-to-date (remaining clauses + delta after fixes).
+  // memResult is only set immediately after a fresh analysis — fall back to it
+  // if there's no saved disk data yet (edge case: localStorage unavailable).
+  const diskResult = contractId ? contractStore.getData(contractId) : null;
+  const memResult  = analysisStore.get();
+  const result     = diskResult ?? memResult;
 
-  const [editorText, setEditorText] = useState(result?.extractedText ?? "");
-  const [clauses, setClauses]       = useState<RiskClause[]>(result?.clauses ?? []);
+  // Restore the already-fixed count so the badge and stats are correct on re-open
+  const savedMeta    = contractId ? contractStore.getAll().find(c => c.id === contractId) : null;
+  const initialFixed = savedMeta?.issuesFixed ?? 0;
+
+  const [clauses, setClauses]           = useState<RiskClause[]>(result?.clauses ?? []);
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
   const [activeTab, setActiveTab]       = useState("Review");
+  const [fixedCount, setFixedCount]     = useState(initialFixed);
 
-  const editorRef = useRef<HTMLDivElement>(null);
-
-  const activeClause = clauses.find(c => c.id === activeCardId) ?? null;
-
-  const editorHtml = useMemo(
-    () => buildEditorHtml(editorText, activeClause?.passage ?? null),
-    [editorText, activeClause],
-  );
-
-  // Scroll highlighted mark into view when active clause changes
+  // Sync remaining clauses to localStorage whenever a card is resolved
   useEffect(() => {
+    if (!contractId) return;
+    contractStore.updateClauses(contractId, clauses);
+  }, [contractId, clauses]);
+
+  // Sync fix count — skip the initial mount call to avoid a redundant write
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    if (!contractId) return;
+    if (!mountedRef.current) { mountedRef.current = true; return; }
+    contractStore.updateFixed(contractId, fixedCount);
+  }, [contractId, fixedCount]);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const quillRef        = useRef<any>(null);
+  const containerRef    = useRef<HTMLDivElement>(null);
+  const prevHighlight   = useRef<{ start: number; length: number } | null>(null);
+
+  // Initialise Quill once on mount
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    let cancelled = false;
+
+    // Wipe any DOM left from a previous run (React StrictMode runs effects twice)
+    el.innerHTML = "";
+
+    import("quill").then(({ default: Quill }) => {
+      // If cleanup already ran, bail — prevents the second StrictMode run from
+      // creating a second toolbar while the first promise resolves late.
+      if (cancelled || !containerRef.current) return;
+
+      const quill = new Quill(containerRef.current, {
+        theme: "snow",
+        modules: { toolbar: QUILL_TOOLBAR },
+        placeholder: "Extracted contract text will appear here…",
+      });
+
+      if (diskResult?.delta) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        quill.setContents(diskResult.delta as any);
+        quill.history.clear();
+      } else if (result?.extractedText) {
+        quill.setText(result.extractedText);
+        quill.history.clear();
+      }
+
+      quillRef.current = quill;
+    });
+
+    return () => {
+      cancelled = true;
+      quillRef.current = null;
+      prevHighlight.current = null;
+      if (containerRef.current) containerRef.current.innerHTML = "";
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Highlight the active clause and scroll to it
+  useEffect(() => {
+    const quill = quillRef.current;
+    if (!quill) return;
+
+    // Clear previous highlight
+    if (prevHighlight.current) {
+      quill.formatText(
+        prevHighlight.current.start,
+        prevHighlight.current.length,
+        { background: false },
+        "silent",
+      );
+      prevHighlight.current = null;
+    }
+
     if (!activeCardId) return;
-    const mark = editorRef.current?.querySelector("mark");
-    if (mark) mark.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [activeCardId]);
+
+    const card = clauses.find(c => c.id === activeCardId);
+    if (!card) return;
+
+    const text  = quill.getText();
+    const match = findPassage(text, card.passage);
+    if (!match) return;
+
+    const length = match.end - match.start;
+
+    // Apply yellow highlight
+    quill.formatText(match.start, length, { background: "#fef08a" }, "silent");
+    prevHighlight.current = { start: match.start, length };
+
+    // Scroll the highlighted span into the centre of .ql-editor (which is the
+    // actual overflow:auto scroll container — scrollIntoView would scroll the page).
+    requestAnimationFrame(() => {
+      const editorEl = containerRef.current?.querySelector(".ql-editor") as HTMLElement | null;
+      const span     = editorEl?.querySelector("[style*='background-color']") as HTMLElement | null;
+      if (!span || !editorEl) return;
+      const editorRect = editorEl.getBoundingClientRect();
+      const spanRect   = span.getBoundingClientRect();
+      // Offset of span top relative to the editor's scroll container
+      const spanOffsetTop = spanRect.top - editorRect.top + editorEl.scrollTop;
+      // Scroll so the span is centred
+      editorEl.scrollTop = spanOffsetTop - editorEl.clientHeight / 2 + spanRect.height / 2;
+    });
+  }, [activeCardId, clauses]);
 
   function handleReplace(card: RiskClause) {
-    setEditorText(prev => {
-      const match = findPassage(prev, card.passage);
-      if (!match) return prev;
-      return prev.slice(0, match.start) + card.suggestion + prev.slice(match.end);
-    });
+    const quill = quillRef.current;
+    if (!quill) return;
+
+    const text  = quill.getText();
+    const match = findPassage(text, card.passage);
+    if (match) {
+      const length = match.end - match.start;
+      quill.deleteText(match.start, length);
+      quill.insertText(match.start, card.suggestion, { background: "#bbf7d0" });
+      prevHighlight.current = null;
+    }
+
+    // Persist the updated editor content so fixes survive re-opens
+    if (contractId) contractStore.updateDelta(contractId, quill.getContents());
+
     setClauses(prev => prev.filter(c => c.id !== card.id));
+    setFixedCount(n => n + 1);
     setActiveCardId(null);
   }
 
   const noData = !result;
+  const activeClause = clauses.find(c => c.id === activeCardId);
 
   return (
-    <div className="flex flex-col min-h-screen">
+    // h-[calc(100vh-4rem)]: full viewport minus the 64px Navbar above
+    // overflow-hidden: prevents page-level scroll so inner panels scroll independently
+    <div className="flex flex-col h-[calc(100vh-4rem)] overflow-hidden">
       {/* Sub-header */}
-      <header className="sticky top-16 z-40 border-b bg-background/80 backdrop-blur-md">
+      <header className="shrink-0 border-b bg-background/80">
         <div className="flex h-14 items-center justify-between px-6">
           <div className="flex items-center gap-4">
             <button
@@ -172,7 +260,6 @@ function ReviewContent() {
             )}
           </div>
 
-          {/* Tab nav */}
           <nav className="flex items-center gap-1">
             {NAV_TABS.map(tab => (
               <button
@@ -199,83 +286,30 @@ function ReviewContent() {
       </header>
 
       {noData ? (
-        // No analysis data — prompt user to go back and upload
         <main className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-3">
             <p className="text-muted-foreground text-sm">No analysis data found.</p>
-            <Button variant="outline" onClick={() => router.push("/")}>
-              Back to Dashboard
-            </Button>
+            <Button variant="outline" onClick={() => router.push("/")}>Back to Dashboard</Button>
           </div>
         </main>
       ) : (
-        <div className="flex flex-1 overflow-hidden">
-          {/* Left: Editor */}
+        <div className="flex flex-1 min-h-0 overflow-hidden">
+          {/* Left: Quill editor */}
           <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Toolbar */}
-            <div className="border-b bg-muted/30 px-6 py-2 flex items-center gap-1 flex-wrap">
-              {[
-                { icon: Bold,         label: "Bold" },
-                { icon: Italic,       label: "Italic" },
-                { icon: Underline,    label: "Underline" },
-              ].map(({ icon: Icon, label }) => (
-                <button
-                  key={label}
-                  title={label}
-                  className="flex h-8 w-8 items-center justify-center rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                >
-                  <Icon className="h-4 w-4" />
-                </button>
-              ))}
-              <div className="w-px h-5 bg-border mx-1" />
-              {[
-                { icon: List,         label: "Bullet list" },
-                { icon: ListOrdered,  label: "Numbered list" },
-              ].map(({ icon: Icon, label }) => (
-                <button
-                  key={label}
-                  title={label}
-                  className="flex h-8 w-8 items-center justify-center rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                >
-                  <Icon className="h-4 w-4" />
-                </button>
-              ))}
-              <div className="w-px h-5 bg-border mx-1" />
-              {[
-                { icon: Link,  label: "Insert link" },
-                { icon: Image, label: "Insert image" },
-              ].map(({ icon: Icon, label }) => (
-                <button
-                  key={label}
-                  title={label}
-                  className="flex h-8 w-8 items-center justify-center rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                >
-                  <Icon className="h-4 w-4" />
-                </button>
-              ))}
-              {activeClause && (
-                <>
-                  <div className="w-px h-5 bg-border mx-1" />
-                  <span className="text-xs text-amber-600 font-medium">
-                    Clause highlighted — click &quot;Replace in doc&quot; to apply fix
-                  </span>
-                </>
-              )}
-            </div>
-
-            {/* Editor area — rendered with highlight */}
-            <div className="flex-1 overflow-y-auto px-12 py-10">
-              <div className="max-w-3xl mx-auto">
-                <div
-                  ref={editorRef}
-                  className="text-sm leading-7 whitespace-pre-wrap text-foreground outline-none"
-                  dangerouslySetInnerHTML={{ __html: editorHtml }}
-                />
+            {activeClause && (
+              <div className="border-b bg-amber-50 px-6 py-2 flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-amber-400 shrink-0" />
+                <span className="text-xs text-amber-700 font-medium">
+                  Clause highlighted — click &quot;Replace in doc&quot; on the card to apply fix
+                </span>
               </div>
-            </div>
+            )}
+
+            {/* Quill mounts here — toolbar is injected above the ql-editor div */}
+            <div ref={containerRef} className="flex-1 flex flex-col overflow-hidden quill-host" />
           </div>
 
-          {/* Right: AI cards sidebar */}
+          {/* Right: AI risk cards */}
           <aside className="w-[400px] border-l flex flex-col bg-muted/20 overflow-hidden">
             <div className="px-5 py-4 border-b bg-background">
               <div className="flex items-center justify-between">
@@ -285,7 +319,7 @@ function ReviewContent() {
                     {clauses.length} {clauses.length === 1 ? "issue" : "issues"} found
                   </p>
                 </div>
-                <div className="flex gap-1.5">
+                <div className="flex flex-wrap gap-1.5 justify-end">
                   {(["high", "medium", "low"] as Risk[]).map(r => {
                     const count = clauses.filter(c => c.type === r).length;
                     if (count === 0) return null;
@@ -298,6 +332,11 @@ function ReviewContent() {
                       </span>
                     );
                   })}
+                  {fixedCount > 0 && (
+                    <span className="rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-green-50 border-green-100 text-green-700">
+                      {fixedCount} fixed by AI
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -309,7 +348,7 @@ function ReviewContent() {
                 </div>
               )}
               {clauses.map(card => {
-                const style   = RISK_STYLES[card.type as Risk];
+                const style    = RISK_STYLES[card.type as Risk];
                 const isActive = card.id === activeCardId;
 
                 return (
@@ -321,15 +360,12 @@ function ReviewContent() {
                     }`}
                   >
                     <div className="px-4 pt-4 pb-3">
-                      <div className="flex items-start justify-between gap-2 mb-2">
-                        <span className={`rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide shrink-0 ${style.badge}`}>
-                          {style.label}
-                        </span>
-                      </div>
-                      <h4 className={`text-sm font-semibold mb-1 ${style.title}`}>{card.clause}</h4>
+                      <span className={`rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${style.badge}`}>
+                        {style.label}
+                      </span>
+                      <h4 className={`text-sm font-semibold mt-2 mb-1 ${style.title}`}>{card.clause}</h4>
                       <p className="text-xs text-muted-foreground mb-2">{card.issue}</p>
 
-                      {/* Recommended clause */}
                       <div className="rounded-md bg-muted/50 border px-3 py-2.5 mb-3">
                         <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
                           Recommended Clause
@@ -337,7 +373,6 @@ function ReviewContent() {
                         <p className="text-xs text-foreground leading-5">{card.suggestion}</p>
                       </div>
 
-                      {/* Actions */}
                       <div className="flex gap-2">
                         <Button
                           size="sm"

@@ -48,6 +48,53 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* ── Quill editor integration ───────────────────────────────────────────── */
+
+/* min-height: 0 on every flex ancestor is the key to independent scrolling —
+   without it, flex items grow to their content height and the page scrolls
+   instead of the inner container.                                           */
+.quill-host {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;          /* allow shrinking below content height */
+  overflow: hidden;
+}
+
+.quill-host .ql-toolbar.ql-snow {
+  flex-shrink: 0;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  border-bottom: 1px solid hsl(var(--border, 214.3 31.8% 91.4%));
+  background: hsl(var(--muted, 210 40% 96.1%) / 0.3);
+  padding: 8px 16px;
+}
+
+.quill-host .ql-container.ql-snow {
+  flex: 1;
+  min-height: 0;          /* same trick: allow container to shrink & scroll */
+  border: none;
+  font-family: var(--font-sans, "Open Sans", sans-serif);
+  font-size: 0.875rem;
+  line-height: 1.75;
+  overflow: hidden;
+}
+
+.quill-host .ql-editor {
+  height: 100%;
+  overflow-y: auto;       /* the actual scroll container */
+  padding: 2.5rem 3rem;
+  color: hsl(var(--foreground, 222.2 84% 4.9%));
+  white-space: pre-wrap;
+}
+
+.quill-host .ql-editor.ql-blank::before {
+  color: hsl(var(--muted-foreground, 215.4 16.3% 46.9%));
+  font-style: normal;
+}
+
+/* ── End Quill ──────────────────────────────────────────────────────────── */
+
 :root {
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);

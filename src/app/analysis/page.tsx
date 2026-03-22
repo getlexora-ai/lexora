@@ -188,7 +188,7 @@ function AnalysisContent() {
                 {completeCount} of {steps.length} steps complete
               </p>
               {done ? (
-                <Button size="sm" className="gap-2" onClick={() => router.push("/")}>
+                <Button size="sm" className="gap-2" onClick={() => router.push(`/review?file=${encodeURIComponent(fileName)}&type=${encodeURIComponent(contractType)}`)}>
                   <span className="relative flex h-2 w-2">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary-foreground opacity-75" />
                     <span className="relative inline-flex h-2 w-2 rounded-full bg-primary-foreground" />

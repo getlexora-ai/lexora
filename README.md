@@ -1,36 +1,44 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Lexora — AI Legal Contract Manager
+
+Lexora is an AI-powered legal contract intelligence platform that helps teams review, analyse, and de-risk contracts faster — without needing a lawyer in the room for every document.
+
+## Why Lexora?
+
+Legal contracts are dense, time-consuming, and easy to get wrong. Missing a liability clause or overlooking an auto-renewal term can cost a business significantly. Lexora solves this by:
+
+- **Automating contract review** — AI scans the full document and surfaces High, Medium, and Low risk clauses instantly
+- **Recommending safer language** — for each flagged clause, Lexora suggests a legally sound replacement you can apply in one click
+- **Tracking risk over time** — a live dashboard shows documents scanned, AI fixes applied, and risk trends across your contract portfolio
+- **Supporting any contract type** — NDAs, MSAs, employment contracts, SaaS agreements, leases, vendor deals, and more
+
+## Features
+
+| Feature | Description |
+|---|---|
+| Dashboard | Overview of risk trends, documents scanned, and AI-assisted fixes |
+| Upload Modal | Drag-and-drop PDF/DOCX upload with contract type selection |
+| Analysis View | Step-by-step animated AI analysis with live progress tracking |
+| Review Editor | Side-by-side rich text editor and AI risk card panel with one-click clause replacement |
+| Clause Library | (Coming soon) Saved and approved clause templates |
+| Policies | (Coming soon) Company-level legal policy configuration |
+
+## Tech Stack
+
+- **Framework**: Next.js 16 (App Router)
+- **UI**: shadcn/ui + Tailwind CSS v4
+- **Charts**: Recharts
+- **Icons**: Lucide React
+- **Font**: Open Sans
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) to view the app.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Version
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+**v0.1.0** — Core UI complete: dashboard, upload flow, AI analysis animation, and contract review page.

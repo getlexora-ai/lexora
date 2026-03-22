@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Upload, Pencil, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { UploadModal } from "@/components/upload-modal";
+import { fileStore } from "@/lib/file-store";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -135,10 +136,10 @@ export default function DashboardPage() {
         <UploadModal
           open={modalOpen}
           onClose={() => setModalOpen(false)}
-          onAnalyze={(files, contractType) => {
-            const file = files[0]?.name ?? "Document";
+          onAnalyze={(file, name, contractType) => {
+            fileStore.set(file);
             setModalOpen(false);
-            router.push(`/analysis?file=${encodeURIComponent(file)}&type=${encodeURIComponent(contractType)}`);
+            router.push(`/analysis?file=${encodeURIComponent(name)}&type=${encodeURIComponent(contractType)}`);
           }}
         />
       </section>

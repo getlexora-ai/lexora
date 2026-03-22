@@ -2,8 +2,10 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, FileText, CheckCircle2, XCircle } from "lucide-react";
+import { ArrowLeft, FileText, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { fileStore } from "@/lib/file-store";
+import { analysisStore } from "@/lib/analysis-store";
 
 type StepStatus = "pending" | "active" | "complete";
 
@@ -31,7 +33,9 @@ const INITIAL_STEPS: Step[] = [
   },
 ];
 
-const STEP_DURATIONS = [3000, 4000, 3000];
+function sleep(ms: number) {
+  return new Promise(r => setTimeout(r, ms));
+}
 
 function AnalysisContent() {
   const router       = useRouter();
@@ -39,39 +43,127 @@ function AnalysisContent() {
   const fileName     = searchParams.get("file") ?? "Document";
   const contractType = searchParams.get("type") ?? "";
 
-  const [steps, setSteps]       = useState<Step[]>(INITIAL_STEPS);
+  const [steps, setSteps]     = useState<Step[]>(INITIAL_STEPS);
   const [progress, setProgress] = useState(0);
   const [done, setDone]         = useState(false);
+  const [error, setError]       = useState<string | null>(null);
+
+  function setStepStatus(index: number, status: StepStatus) {
+    setSteps(prev => prev.map((s, i) => i === index ? { ...s, status } : s));
+  }
 
   useEffect(() => {
     let cancelled = false;
 
     async function run() {
-      for (let i = 0; i < INITIAL_STEPS.length; i++) {
-        if (cancelled) return;
-        setSteps(prev => prev.map((s, idx) =>
-          idx === i ? { ...s, status: "active" } : s
-        ));
-        setProgress(Math.round((i / INITIAL_STEPS.length) * 100));
-
-        await new Promise(res => setTimeout(res, STEP_DURATIONS[i]));
-        if (cancelled) return;
-
-        setSteps(prev => prev.map((s, idx) =>
-          idx === i ? { ...s, status: "complete" } : s
-        ));
+      const file = fileStore.get();
+      if (!file) {
+        setError("No file found. Please go back and upload a document.");
+        return;
       }
-      if (!cancelled) {
+
+      try {
+        // ── Step 1: Extract text ──────────────────────────────
+        setStepStatus(0, "active");
+        setProgress(5);
+
+        const extractForm = new FormData();
+        extractForm.append("file", file);
+
+        const [extractRes] = await Promise.all([
+          fetch("/api/extract", { method: "POST", body: extractForm }),
+          sleep(3000), // minimum UX duration
+        ]);
+
+        if (cancelled) return;
+        if (!extractRes.ok) {
+          const err = await extractRes.json();
+          throw new Error(err.error ?? "Text extraction failed");
+        }
+
+        const { text } = await extractRes.json();
+        setStepStatus(0, "complete");
+        setProgress(33);
+
+        // ── Step 2: Analyse with Claude ───────────────────────
+        if (cancelled) return;
+        setStepStatus(1, "active");
+        setProgress(40);
+
+        const [analyseRes] = await Promise.all([
+          fetch("/api/analyse", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text, contractType }),
+          }),
+          sleep(4000),
+        ]);
+
+        if (cancelled) return;
+        if (!analyseRes.ok) {
+          const err = await analyseRes.json();
+          throw new Error(err.error ?? "AI analysis failed");
+        }
+
+        const { clauses } = await analyseRes.json();
+        setStepStatus(1, "complete");
+        setProgress(75);
+
+        // ── Step 3: Finalise ──────────────────────────────────
+        if (cancelled) return;
+        setStepStatus(2, "active");
+        setProgress(85);
+
+        await sleep(2000);
+        if (cancelled) return;
+
+        // Store results for the review page
+        analysisStore.set({ extractedText: text, clauses });
+        fileStore.clear();
+
+        setStepStatus(2, "complete");
         setProgress(100);
         setDone(true);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Something went wrong");
+        }
       }
     }
 
     run();
     return () => { cancelled = true; };
-  }, []);
+  }, [contractType]);
 
   const completeCount = steps.filter(s => s.status === "complete").length;
+
+  if (error) {
+    return (
+      <div className="flex flex-col min-h-screen">
+        <header className="sticky top-16 z-40 border-b bg-background/80 backdrop-blur-md">
+          <div className="flex h-14 items-center px-8 gap-4">
+            <button
+              onClick={() => router.push("/")}
+              className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors group"
+            >
+              <ArrowLeft className="h-4 w-4 group-hover:-translate-x-0.5 transition-transform" />
+              Back to Dashboard
+            </button>
+          </div>
+        </header>
+        <main className="flex-1 flex items-center justify-center px-6">
+          <div className="w-full max-w-md text-center space-y-4">
+            <div className="flex justify-center">
+              <AlertCircle className="h-12 w-12 text-destructive" />
+            </div>
+            <h2 className="text-xl font-bold">Analysis Failed</h2>
+            <p className="text-sm text-muted-foreground">{error}</p>
+            <Button onClick={() => router.push("/")}>Back to Dashboard</Button>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -142,7 +234,7 @@ function AnalysisContent() {
                   </span>
                 ) : (
                   <span className="text-xs text-muted-foreground italic">
-                    Estimated time remaining: {Math.round(((100 - progress) / 100) * 10)}s
+                    Processing your document…
                   </span>
                 )}
               </div>
@@ -158,15 +250,12 @@ function AnalysisContent() {
             <div className="px-8 py-8 space-y-8">
               {steps.map((step, i) => (
                 <div key={step.label} className="flex gap-5">
-                  {/* Icon + connector */}
                   <div className="flex flex-col items-center">
                     <StepIcon status={step.status} index={i + 1} />
                     {i < steps.length - 1 && (
                       <div className="mt-2 w-px flex-1 min-h-[36px] bg-border" />
                     )}
                   </div>
-
-                  {/* Text */}
                   <div className="flex-1 pt-1 pb-2">
                     <div className="flex items-center justify-between mb-1.5">
                       <h4 className={`text-sm font-semibold ${step.status === "pending" ? "text-muted-foreground" : ""}`}>
@@ -188,7 +277,11 @@ function AnalysisContent() {
                 {completeCount} of {steps.length} steps complete
               </p>
               {done ? (
-                <Button size="sm" className="gap-2" onClick={() => router.push(`/review?file=${encodeURIComponent(fileName)}&type=${encodeURIComponent(contractType)}`)}>
+                <Button
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => router.push(`/review?file=${encodeURIComponent(fileName)}&type=${encodeURIComponent(contractType)}`)}
+                >
                   <span className="relative flex h-2 w-2">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary-foreground opacity-75" />
                     <span className="relative inline-flex h-2 w-2 rounded-full bg-primary-foreground" />
@@ -220,7 +313,6 @@ export default function AnalysisPage() {
   );
 }
 
-// --- Step icon with ping animation when active ---
 function StepIcon({ status, index }: { status: StepStatus; index: number }) {
   if (status === "complete") {
     return (
@@ -229,21 +321,16 @@ function StepIcon({ status, index }: { status: StepStatus; index: number }) {
       </div>
     );
   }
-
   if (status === "active") {
     return (
       <span className="relative flex h-9 w-9 shrink-0 items-center justify-center">
-        {/* Outer ping ring */}
         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-20" />
-        {/* Inner solid circle */}
         <span className="relative flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">
           {index}
         </span>
       </span>
     );
   }
-
-  // pending
   return (
     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 border-border bg-muted text-xs font-bold text-muted-foreground">
       {index}

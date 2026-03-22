@@ -22,12 +22,13 @@ type UploadedFile = {
   id: string;
   name: string;
   size: string;
+  file: File;
 };
 
 type Props = {
   open: boolean;
   onClose: () => void;
-  onAnalyze: (files: UploadedFile[], contractType: string) => void;
+  onAnalyze: (file: File, name: string, contractType: string) => void;
 };
 
 function formatSize(bytes: number): string {
@@ -46,6 +47,7 @@ export function UploadModal({ open, onClose, onAnalyze }: Props) {
       id:   crypto.randomUUID(),
       name: f.name,
       size: formatSize(f.size),
+      file: f,
     }));
     setFiles(prev => [...prev, ...incoming]);
   }
@@ -61,7 +63,8 @@ export function UploadModal({ open, onClose, onAnalyze }: Props) {
   }
 
   function handleAnalyze() {
-    onAnalyze(files, contractType);
+    if (files.length === 0) return;
+    onAnalyze(files[0].file, files[0].name, contractType);
     setFiles([]);
     setContractType("");
     onClose();

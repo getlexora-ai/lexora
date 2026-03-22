@@ -49,15 +49,62 @@ function escapeHtml(str: string): string {
     .replace(/>/g, "&gt;");
 }
 
+function normalise(s: string) {
+  return s.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+// Find the start index in `text` that best matches `needle`,
+// tolerating whitespace differences and case.
+function findPassage(text: string, needle: string): { start: number; end: number } | null {
+  // 1. Exact match first
+  const exact = text.indexOf(needle);
+  if (exact !== -1) return { start: exact, end: exact + needle.length };
+
+  // 2. Normalise both sides and search
+  const normNeedle = normalise(needle);
+  const normText   = normalise(text);
+  const normIdx    = normText.indexOf(normNeedle);
+  if (normIdx === -1) return null;
+
+  // Map normalised index back to original text by walking character by character
+  let origIdx = 0;
+  let normCount = 0;
+  while (origIdx < text.length && normCount < normIdx) {
+    if (/\s/.test(text[origIdx])) {
+      // skip all consecutive whitespace in original (counts as 1 space in normalised)
+      while (origIdx < text.length && /\s/.test(text[origIdx])) origIdx++;
+      normCount++; // the single space
+    } else {
+      origIdx++;
+      normCount++;
+    }
+  }
+  const start = origIdx;
+
+  // Walk forward by the length of the normalised needle
+  let normLen = 0;
+  while (origIdx < text.length && normLen < normNeedle.length) {
+    if (/\s/.test(text[origIdx])) {
+      while (origIdx < text.length && /\s/.test(text[origIdx])) origIdx++;
+      normLen++;
+    } else {
+      origIdx++;
+      normLen++;
+    }
+  }
+
+  return { start, end: origIdx };
+}
+
 function buildEditorHtml(text: string, activeOriginal: string | null): string {
   if (!activeOriginal) return escapeHtml(text);
 
-  const idx = text.indexOf(activeOriginal);
-  if (idx === -1) return escapeHtml(text);
+  const match = findPassage(text, activeOriginal);
+  if (!match) return escapeHtml(text);
 
-  const before = escapeHtml(text.slice(0, idx));
-  const clause = escapeHtml(activeOriginal);
-  const after  = escapeHtml(text.slice(idx + activeOriginal.length));
+  const before = escapeHtml(text.slice(0, match.start));
+  const clause = escapeHtml(text.slice(match.start, match.end));
+  const after  = escapeHtml(text.slice(match.end));
 
   return `${before}<mark class="bg-yellow-200 rounded-sm px-0.5">${clause}</mark>${after}`;
 }
@@ -92,7 +139,11 @@ function ReviewContent() {
   }, [activeCardId]);
 
   function handleReplace(card: RiskClause) {
-    setEditorText(prev => prev.replace(card.passage, card.suggestion));
+    setEditorText(prev => {
+      const match = findPassage(prev, card.passage);
+      if (!match) return prev;
+      return prev.slice(0, match.start) + card.suggestion + prev.slice(match.end);
+    });
     setClauses(prev => prev.filter(c => c.id !== card.id));
     setActiveCardId(null);
   }

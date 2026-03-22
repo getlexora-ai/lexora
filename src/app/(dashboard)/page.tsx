@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Upload, Pencil, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { UploadModal } from "@/components/upload-modal";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -94,6 +95,7 @@ export default function DashboardPage() {
     { id: "5", name: "SaaS Subscription Agreement",      risk: "High",   issues: 6, issuesFixed: 3, saved: "Feb 20, 2026" },
   ]);
 
+  const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName]   = useState("");
@@ -134,7 +136,9 @@ export default function DashboardPage() {
           open={modalOpen}
           onClose={() => setModalOpen(false)}
           onAnalyze={(files, contractType) => {
-            console.log("Analyze:", files, contractType);
+            const file = files[0]?.name ?? "Document";
+            setModalOpen(false);
+            router.push(`/analysis?file=${encodeURIComponent(file)}&type=${encodeURIComponent(contractType)}`);
           }}
         />
       </section>

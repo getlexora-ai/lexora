@@ -53,6 +53,41 @@ LLMWHISPERER_BASE_URL=https://llmwhisperer-api.eu-west.unstract.com/api/v2
 
 Open [http://localhost:3000](http://localhost:3000) to view the app.
 
+## Roadmap
+
+### v0.3.0 — Supabase Backend
+- Replace `localStorage` with Supabase for persistent, cross-device contract storage
+- Database schema: `contracts`, `clauses`, `document_versions`, `users`
+- File storage via Supabase Storage (original PDFs + extracted text)
+- Row-level security so each user only sees their own contracts
+- Auth foundation (email/password + Google OAuth)
+
+### v0.4.0 — AI Flow Polish
+- Selection-based refine: floating toolbar above highlighted text with Ask AI / Refine actions
+- Chat panel improvements: message history persisted per contract, streaming responses
+- Refine flow: side-by-side diff view showing original clause vs AI suggestion before applying
+- Clause confidence scores and reasoning shown alongside each risk card
+- Ask AI pre-fill from card context (one-click "explain this clause")
+
+### v0.5.0 — Clause Library & Templates
+- Save approved replacement clauses to a personal library
+- Tag clauses by jurisdiction, contract type, and risk category
+- Re-use saved clauses across contracts with one click
+- Import clause packs (GDPR, US employment, SaaS standard)
+
+### v0.6.0 — Team & Approval Workflows
+- Multi-user workspaces with role-based access (viewer, editor, approver)
+- Approval queue: contracts require sign-off before fixes are finalised
+- Comment threads on individual clauses
+- Audit log of all AI suggestions, replacements, and manual edits
+
+### v1.0.0 — Production Ready
+- Full company policy engine: define rules that flag non-compliant clauses automatically
+- Bulk upload and batch analysis
+- Export to PDF, DOCX, and redline format
+- Webhook integrations (Slack, email) for risk alerts
+- Usage analytics and billing
+
 ## Changelog
 
 ### v0.2.0

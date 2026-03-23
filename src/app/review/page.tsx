@@ -4,7 +4,7 @@ import "quill/dist/quill.snow.css";
 
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, ChevronRight, Sparkles, Send, Loader2 } from "lucide-react";
+import { ArrowLeft, ChevronRight, Sparkles, Send, Loader2, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { analysisStore, RiskClause } from "@/lib/analysis-store";
 import { contractStore } from "@/lib/contract-store";
@@ -118,6 +118,13 @@ function ReviewContent() {
   const [chatLoading, setChatLoading] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
+  // Floating selection toolbar
+  type SelectionToolbar = { top: number; left: number; text: string };
+  const [selectionToolbar, setSelectionToolbar] = useState<SelectionToolbar | null>(null);
+  const [selectionRefineOpen, setSelectionRefineOpen] = useState(false);
+  const [selectionRefineNote, setSelectionRefineNote] = useState("");
+  const [selectionRefineLoading, setSelectionRefineLoading] = useState(false);
+
   // Sync remaining clauses to localStorage whenever a card is resolved
   useEffect(() => {
     if (!contractId) return;
@@ -168,6 +175,33 @@ function ReviewContent() {
       }
 
       quillRef.current = quill;
+
+      // Show floating toolbar when user selects text
+      quill.on("selection-change", (range) => {
+        if (!range || range.length === 0) {
+          setSelectionToolbar(null);
+          setSelectionRefineOpen(false);
+          return;
+        }
+        const selected = quill.getText(range.index, range.length).trim();
+        if (!selected) return;
+
+        // Use the actual DOM selection rect for pixel-perfect positioning
+        requestAnimationFrame(() => {
+          const domSel = window.getSelection();
+          if (!domSel || domSel.rangeCount === 0) return;
+          const selRect       = domSel.getRangeAt(0).getBoundingClientRect();
+          const containerRect = containerRef.current?.getBoundingClientRect();
+          if (!containerRect) return;
+
+          // Toolbar sits 8px above the selection, centred horizontally over it
+          const top  = selRect.top  - containerRect.top  - 8;
+          const left = selRect.left - containerRect.left + selRect.width / 2;
+          setSelectionToolbar({ top, left, text: selected });
+          setSelectionRefineOpen(false);
+          setSelectionRefineNote("");
+        });
+      });
     });
 
     return () => {
@@ -303,6 +337,39 @@ function ReviewContent() {
     }
   }
 
+  async function handleSelectionRefine() {
+    if (!selectionToolbar || !selectionRefineNote.trim()) return;
+    setSelectionRefineLoading(true);
+    try {
+      const res = await fetch("/api/refine", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          passage: selectionToolbar.text,
+          currentSuggestion: selectionToolbar.text,
+          userNote: selectionRefineNote.trim(),
+          contractText: liveText(),
+        }),
+      });
+      const data = await res.json();
+      if (data.refined) {
+        const quill = quillRef.current;
+        const text  = quill?.getText() ?? "";
+        const idx   = text.indexOf(selectionToolbar.text);
+        if (quill && idx !== -1) {
+          quill.deleteText(idx, selectionToolbar.text.length);
+          quill.insertText(idx, data.refined, { background: "#bbf7d0" });
+          if (contractId) contractStore.updateDelta(contractId, quill.getContents());
+        }
+        setSelectionToolbar(null);
+        setSelectionRefineOpen(false);
+        setSelectionRefineNote("");
+      }
+    } finally {
+      setSelectionRefineLoading(false);
+    }
+  }
+
   const noData = !result;
   const activeClause = clauses.find(c => c.id === activeCardId);
 
@@ -376,7 +443,81 @@ function ReviewContent() {
             )}
 
             {/* Quill mounts here — toolbar is injected above the ql-editor div */}
-            <div ref={containerRef} className="flex-1 flex flex-col overflow-hidden quill-host" />
+            <div className="flex-1 relative overflow-hidden">
+              <div ref={containerRef} className="h-full flex flex-col overflow-hidden quill-host" />
+
+              {/* Floating selection toolbar */}
+              {selectionToolbar && (
+                <div
+                  className="absolute z-50 flex flex-col items-center"
+                  style={{ top: selectionToolbar.top, left: selectionToolbar.left, transform: "translate(-50%, -100%)" }}
+                  onMouseDown={e => e.preventDefault()}
+                >
+                  {!selectionRefineOpen ? (
+                    <div className="flex items-center gap-1 rounded-lg border bg-background shadow-lg px-2 py-1.5">
+                      <button
+                        className="flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium hover:bg-muted transition-colors"
+                        onClick={() => {
+                          setSidePanel("chat");
+                          setChatInput(`"${selectionToolbar.text.slice(0, 120)}${selectionToolbar.text.length > 120 ? "…" : ""}" — explain any legal risks in this passage.`);
+                          setSelectionToolbar(null);
+                        }}
+                      >
+                        <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
+                        Ask AI
+                      </button>
+                      <div className="w-px h-4 bg-border" />
+                      <button
+                        className="flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium hover:bg-muted transition-colors"
+                        onClick={() => setSelectionRefineOpen(true)}
+                      >
+                        <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />
+                        Refine
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="w-72 rounded-lg border bg-background shadow-lg p-3 space-y-2">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Refine selected text</p>
+                      <p className="text-xs text-muted-foreground line-clamp-2 italic">
+                        &ldquo;{selectionToolbar.text.slice(0, 100)}{selectionToolbar.text.length > 100 ? "…" : ""}&rdquo;
+                      </p>
+                      <textarea
+                        autoFocus
+                        rows={2}
+                        placeholder="e.g. make it more founder-friendly, EU jurisdiction…"
+                        className="w-full rounded-md border bg-muted/30 px-2.5 py-1.5 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+                        value={selectionRefineNote}
+                        onChange={e => setSelectionRefineNote(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSelectionRefine(); }
+                          if (e.key === "Escape") { setSelectionToolbar(null); setSelectionRefineOpen(false); }
+                        }}
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          className="flex-1 h-7 text-xs gap-1"
+                          disabled={selectionRefineLoading || !selectionRefineNote.trim()}
+                          onClick={handleSelectionRefine}
+                        >
+                          {selectionRefineLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                          {selectionRefineLoading ? "Refining…" : "Apply"}
+                        </Button>
+                        <Button
+                          size="sm" variant="ghost"
+                          className="h-7 text-xs px-2"
+                          onClick={() => { setSelectionToolbar(null); setSelectionRefineOpen(false); }}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  {/* Arrow pointing down toward the selection */}
+                  <div className="w-2.5 h-2.5 rotate-45 border-b border-r bg-background -mt-[5px] border-border shadow-sm" />
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Right: AI panel */}

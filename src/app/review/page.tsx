@@ -4,7 +4,7 @@ import "quill/dist/quill.snow.css";
 
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, ChevronRight, Sparkles } from "lucide-react";
+import { ArrowLeft, ChevronRight, Sparkles, Send, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { analysisStore, RiskClause } from "@/lib/analysis-store";
 import { contractStore } from "@/lib/contract-store";
@@ -104,6 +104,19 @@ function ReviewContent() {
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
   const [activeTab, setActiveTab]       = useState("Review");
   const [fixedCount, setFixedCount]     = useState(initialFixed);
+
+  // Refine state: which card is open + user input + loading
+  const [refiningId, setRefiningId]       = useState<string | null>(null);
+  const [refineNote, setRefineNote]       = useState("");
+  const [refineLoading, setRefineLoading] = useState(false);
+
+  // Ask AI chat state
+  type ChatMsg = { role: "user" | "assistant"; content: string };
+  const [sidePanel, setSidePanel]     = useState<"issues" | "chat">("issues");
+  const [chatHistory, setChatHistory] = useState<ChatMsg[]>([]);
+  const [chatInput, setChatInput]     = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatBottomRef = useRef<HTMLDivElement>(null);
 
   // Sync remaining clauses to localStorage whenever a card is resolved
   useEffect(() => {
@@ -233,6 +246,63 @@ function ReviewContent() {
     setActiveCardId(null);
   }
 
+  // Always use the live Quill text so the AI sees fixes already applied
+  function liveText() {
+    return quillRef.current?.getText() ?? result?.extractedText ?? "";
+  }
+
+  async function handleRefine(card: RiskClause) {
+    if (!refineNote.trim()) return;
+    setRefineLoading(true);
+    try {
+      const res = await fetch("/api/refine", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          passage: card.passage,
+          currentSuggestion: card.suggestion,
+          userNote: refineNote.trim(),
+          contractText: liveText(),
+        }),
+      });
+      const data = await res.json();
+      if (data.refined) {
+        setClauses(prev =>
+          prev.map(c => c.id === card.id ? { ...c, suggestion: data.refined } : c)
+        );
+        setRefiningId(null);
+        setRefineNote("");
+      }
+    } finally {
+      setRefineLoading(false);
+    }
+  }
+
+  async function handleChat() {
+    const q = chatInput.trim();
+    if (!q || chatLoading) return;
+    const next: ChatMsg[] = [...chatHistory, { role: "user", content: q }];
+    setChatHistory(next);
+    setChatInput("");
+    setChatLoading(true);
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: q,
+          contractText: liveText(),
+          history: chatHistory,
+        }),
+      });
+      const data = await res.json();
+      setChatHistory(prev => [...prev, { role: "assistant", content: data.answer ?? data.error ?? "No response." }]);
+    } finally {
+      setChatLoading(false);
+      requestAnimationFrame(() => chatBottomRef.current?.scrollIntoView({ behavior: "smooth" }));
+    }
+  }
+
   const noData = !result;
   const activeClause = clauses.find(c => c.id === activeCardId);
 
@@ -309,14 +379,16 @@ function ReviewContent() {
             <div ref={containerRef} className="flex-1 flex flex-col overflow-hidden quill-host" />
           </div>
 
-          {/* Right: AI risk cards */}
+          {/* Right: AI panel */}
           <aside className="w-[400px] border-l flex flex-col bg-muted/20 overflow-hidden">
-            <div className="px-5 py-4 border-b bg-background">
-              <div className="flex items-center justify-between">
+
+            {/* Panel header + tab toggle */}
+            <div className="px-5 py-3 border-b bg-background shrink-0">
+              <div className="flex items-center justify-between mb-3">
                 <div>
                   <h3 className="text-sm font-bold">AI Analysis</h3>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {clauses.length} {clauses.length === 1 ? "issue" : "issues"} found
+                    {clauses.length} {clauses.length === 1 ? "issue" : "issues"} remaining
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-1.5 justify-end">
@@ -324,10 +396,7 @@ function ReviewContent() {
                     const count = clauses.filter(c => c.type === r).length;
                     if (count === 0) return null;
                     return (
-                      <span
-                        key={r}
-                        className={`rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${RISK_STYLES[r].badge}`}
-                      >
+                      <span key={r} className={`rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${RISK_STYLES[r].badge}`}>
                         {count} {r}
                       </span>
                     );
@@ -339,64 +408,190 @@ function ReviewContent() {
                   )}
                 </div>
               </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-              {clauses.length === 0 && (
-                <div className="text-center py-12 text-sm text-muted-foreground">
-                  All issues resolved.
-                </div>
-              )}
-              {clauses.map(card => {
-                const style    = RISK_STYLES[card.type as Risk];
-                const isActive = card.id === activeCardId;
-
-                return (
-                  <div
-                    key={card.id}
-                    onClick={() => setActiveCardId(isActive ? null : card.id)}
-                    className={`rounded-lg border border-l-4 bg-card shadow-sm cursor-pointer transition-shadow ${style.border} ${
-                      isActive ? "ring-2 ring-primary/30 shadow-md" : "hover:shadow-md"
+              {/* Tab toggle */}
+              <div className="flex rounded-md border bg-muted/40 p-0.5 gap-0.5">
+                {(["issues", "chat"] as const).map(tab => (
+                  <button
+                    key={tab}
+                    onClick={() => setSidePanel(tab)}
+                    className={`flex-1 rounded py-1 text-xs font-semibold transition-colors capitalize ${
+                      sidePanel === tab
+                        ? "bg-background shadow-sm text-foreground"
+                        : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
-                    <div className="px-4 pt-4 pb-3">
-                      <span className={`rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${style.badge}`}>
-                        {style.label}
-                      </span>
-                      <h4 className={`text-sm font-semibold mt-2 mb-1 ${style.title}`}>{card.clause}</h4>
-                      <p className="text-xs text-muted-foreground mb-2">{card.issue}</p>
+                    {tab === "issues" ? "Issues" : "Ask AI"}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-                      <div className="rounded-md bg-muted/50 border px-3 py-2.5 mb-3">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
-                          Recommended Clause
-                        </p>
-                        <p className="text-xs text-foreground leading-5">{card.suggestion}</p>
-                      </div>
+            {/* Issues panel */}
+            {sidePanel === "issues" && (
+              <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+                {clauses.length === 0 && (
+                  <div className="text-center py-12 text-sm text-muted-foreground">
+                    All issues resolved.
+                  </div>
+                )}
+                {clauses.map(card => {
+                  const style    = RISK_STYLES[card.type as Risk];
+                  const isActive = card.id === activeCardId;
+                  const isRefining = refiningId === card.id;
 
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="flex-1 text-xs h-8 gap-1"
-                          onClick={e => { e.stopPropagation(); handleReplace(card); }}
-                        >
-                          <ChevronRight className="h-3.5 w-3.5" />
-                          Replace in doc
-                        </Button>
-                        <Button
-                          size="sm"
-                          className="flex-1 text-xs h-8 gap-1"
-                          onClick={e => e.stopPropagation()}
-                        >
-                          <Sparkles className="h-3.5 w-3.5" />
-                          Refine
-                        </Button>
+                  return (
+                    <div
+                      key={card.id}
+                      onClick={() => { if (!isRefining) setActiveCardId(isActive ? null : card.id); }}
+                      className={`rounded-lg border border-l-4 bg-card shadow-sm cursor-pointer transition-shadow ${style.border} ${
+                        isActive ? "ring-2 ring-primary/30 shadow-md" : "hover:shadow-md"
+                      }`}
+                    >
+                      <div className="px-4 pt-4 pb-3">
+                        <span className={`rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${style.badge}`}>
+                          {style.label}
+                        </span>
+                        <h4 className={`text-sm font-semibold mt-2 mb-1 ${style.title}`}>{card.clause}</h4>
+                        <p className="text-xs text-muted-foreground mb-2">{card.issue}</p>
+
+                        <div className="rounded-md bg-muted/50 border px-3 py-2.5 mb-3">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
+                            Recommended Clause
+                          </p>
+                          <p className="text-xs text-foreground leading-5">{card.suggestion}</p>
+                        </div>
+
+                        {/* Refine input — shown when refine is open for this card */}
+                        {isRefining && (
+                          <div className="mb-3" onClick={e => e.stopPropagation()}>
+                            <textarea
+                              autoFocus
+                              rows={2}
+                              placeholder="e.g. we're a UK company, make it more founder-friendly…"
+                              className="w-full rounded-md border bg-background px-3 py-2 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+                              value={refineNote}
+                              onChange={e => setRefineNote(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === "Enter" && !e.shiftKey) {
+                                  e.preventDefault();
+                                  handleRefine(card);
+                                }
+                                if (e.key === "Escape") { setRefiningId(null); setRefineNote(""); }
+                              }}
+                            />
+                            <div className="flex gap-2 mt-1.5">
+                              <Button
+                                size="sm"
+                                className="flex-1 text-xs h-7 gap-1"
+                                disabled={refineLoading || !refineNote.trim()}
+                                onClick={e => { e.stopPropagation(); handleRefine(card); }}
+                              >
+                                {refineLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                                {refineLoading ? "Refining…" : "Refine"}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-xs h-7 px-2"
+                                onClick={e => { e.stopPropagation(); setRefiningId(null); setRefineNote(""); }}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="flex-1 text-xs h-8 gap-1"
+                            onClick={e => { e.stopPropagation(); handleReplace(card); }}
+                          >
+                            <ChevronRight className="h-3.5 w-3.5" />
+                            Replace in doc
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant={isRefining ? "secondary" : "default"}
+                            className="flex-1 text-xs h-8 gap-1"
+                            onClick={e => {
+                              e.stopPropagation();
+                              if (isRefining) { setRefiningId(null); setRefineNote(""); }
+                              else { setRefiningId(card.id); setRefineNote(""); }
+                            }}
+                          >
+                            <Sparkles className="h-3.5 w-3.5" />
+                            {isRefining ? "Cancel" : "Refine"}
+                          </Button>
+                        </div>
                       </div>
                     </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Ask AI chat panel */}
+            {sidePanel === "chat" && (
+              <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+                  {chatHistory.length === 0 && (
+                    <div className="text-center py-10 space-y-2">
+                      <Sparkles className="h-6 w-6 mx-auto text-muted-foreground/50" />
+                      <p className="text-xs text-muted-foreground">Ask anything about this contract.</p>
+                      <p className="text-[11px] text-muted-foreground/60">e.g. "What are my termination rights?" or "Is this auto-renewal clause standard?"</p>
+                    </div>
+                  )}
+                  {chatHistory.map((msg, i) => (
+                    <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                      <div className={`max-w-[85%] rounded-xl px-3 py-2 text-xs leading-5 ${
+                        msg.role === "user"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-background border text-foreground"
+                      }`}>
+                        {msg.content}
+                      </div>
+                    </div>
+                  ))}
+                  {chatLoading && (
+                    <div className="flex justify-start">
+                      <div className="bg-background border rounded-xl px-3 py-2">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                      </div>
+                    </div>
+                  )}
+                  <div ref={chatBottomRef} />
+                </div>
+
+                {/* Chat input */}
+                <div className="shrink-0 border-t bg-background px-3 py-3">
+                  <div className="flex items-end gap-2">
+                    <textarea
+                      rows={2}
+                      placeholder="Ask about this contract…"
+                      className="flex-1 rounded-md border bg-muted/30 px-3 py-2 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+                      value={chatInput}
+                      onChange={e => setChatInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          handleChat();
+                        }
+                      }}
+                    />
+                    <Button
+                      size="icon"
+                      className="h-9 w-9 shrink-0"
+                      disabled={chatLoading || !chatInput.trim()}
+                      onClick={handleChat}
+                    >
+                      {chatLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    </Button>
                   </div>
-                );
-              })}
-            </div>
+                </div>
+              </div>
+            )}
           </aside>
         </div>
       )}

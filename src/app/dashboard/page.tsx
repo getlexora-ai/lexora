@@ -232,16 +232,35 @@ export default function DashboardPage() {
           onGenerate={async ({ name, contractType, party1, party2, jurisdiction, keyTerms }) => {
             setGenerating(true);
             try {
-              const res = await fetch("/api/generate", {
+              // Step 1: Claude generates the initial draft
+              const genRes = await fetch("/api/generate", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ contractType, party1, party2, jurisdiction, keyTerms }),
               });
-              const data = await res.json();
-              if (!data.text) throw new Error(data.error ?? "Generation failed");
-              analysisStore.set({ extractedText: data.text, clauses: [] });
+              const genData = await genRes.json();
+              if (!genData.text) throw new Error(genData.error ?? "Generation failed");
+
+              // Step 2: Save to Supabase so edits and chat are persisted
+              const saveRes = await fetch("/api/contracts", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  name,
+                  contract_type: contractType,
+                  extracted_text: genData.text,
+                  risk_level: "low",
+                  clauses: [],
+                }),
+              });
+              const saveData = await saveRes.json();
+              if (!saveRes.ok) throw new Error(saveData.error ?? "Failed to save contract");
+
               setCreateOpen(false);
-              router.push(`/review?file=${encodeURIComponent(name)}&type=${encodeURIComponent(contractType)}&mode=create`);
+              await loadContracts();
+              router.push(
+                `/review?contractId=${saveData.id}&file=${encodeURIComponent(name)}&type=${encodeURIComponent(contractType)}&mode=create`
+              );
             } catch (err) {
               console.error("[generate]", err);
             } finally {

@@ -310,9 +310,37 @@ create policy "users can see their own org memberships"
 
 
 -- ============================================================
--- Storage bucket (create manually in Supabase Dashboard)
--- Dashboard → Storage → New Bucket
---   Name    : contract-files
---   Public  : false (private)
---   Path    : {user_id}/{contract_id}/original.pdf
+-- Storage bucket + policies
+-- 1. Create the bucket manually:
+--    Dashboard → Storage → New Bucket
+--      Name   : contract_files
+--      Public : false (private)
+-- 2. Then run the SQL below to set upload/download policies
 -- ============================================================
+
+-- Users can upload files only into their own folder ({user_id}/...)
+create policy "users can upload their own contract files"
+  on storage.objects for insert
+  to authenticated
+  with check (
+    bucket_id = 'contract_files'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+-- Users can read only their own files
+create policy "users can read their own contract files"
+  on storage.objects for select
+  to authenticated
+  using (
+    bucket_id = 'contract_files'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+-- Users can delete only their own files
+create policy "users can delete their own contract files"
+  on storage.objects for delete
+  to authenticated
+  using (
+    bucket_id = 'contract_files'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );

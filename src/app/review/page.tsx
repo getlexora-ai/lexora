@@ -382,7 +382,7 @@ function ReviewContent() {
         <div className="flex h-14 items-center justify-between px-6">
           <div className="flex items-center gap-4">
             <button
-              onClick={() => router.push("/")}
+              onClick={() => router.push("/dashboard")}
               className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors group"
             >
               <ArrowLeft className="h-4 w-4 group-hover:-translate-x-0.5 transition-transform" />
@@ -426,7 +426,7 @@ function ReviewContent() {
         <main className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-3">
             <p className="text-muted-foreground text-sm">No analysis data found.</p>
-            <Button variant="outline" onClick={() => router.push("/")}>Back to Dashboard</Button>
+            <Button variant="outline" onClick={() => router.push("/dashboard")}>Back to Dashboard</Button>
           </div>
         </main>
       ) : (

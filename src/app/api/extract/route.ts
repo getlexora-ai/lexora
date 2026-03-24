@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 
 export const maxDuration = 120;
 
@@ -41,6 +42,29 @@ async function pollUntilProcessed(whisperHash: string): Promise<string> {
   throw new Error("LLMWhisperer timed out after 3+ minutes");
 }
 
+async function uploadToStorage(bytes: Buffer, fileName: string, userId: string): Promise<string | null> {
+  const supabase    = await createClient();
+  const ext         = fileName.split(".").pop() ?? "pdf";
+  const storagePath = `${userId}/${Date.now()}/original.${ext}`;
+
+  console.log("[storage] uploading to contract_files:", storagePath, `(${bytes.length} bytes)`);
+
+  const { data, error } = await supabase.storage
+    .from("contract_files")
+    .upload(storagePath, bytes, {
+      contentType: ext === "pdf" ? "application/pdf" : "application/octet-stream",
+      upsert: false,
+    });
+
+  if (error) {
+    console.error("[storage] upload failed:", error.message, JSON.stringify(error));
+    return null;
+  }
+
+  console.log("[storage] upload success:", data?.path);
+  return storagePath;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
@@ -48,6 +72,15 @@ export async function POST(req: NextRequest) {
     if (!file) return NextResponse.json({ error: "No file provided" }, { status: 400 });
 
     const bytes = Buffer.from(await file.arrayBuffer());
+
+    // Upload original file to Supabase Storage (non-blocking — extraction continues even if upload fails)
+    const supabase = await createClient();
+    const { data: { user }, error: authErr } = await supabase.auth.getUser();
+    console.log("[extract] auth user:", user?.id ?? null, authErr?.message ?? null);
+    const filePath = user
+      ? await uploadToStorage(bytes, file.name, user.id)
+      : null;
+    console.log("[extract] file_path:", filePath);
 
     // Match Python SDK: raw binary body, query params for config (no wait_timeout — handled client-side)
     const params = new URLSearchParams({
@@ -68,7 +101,7 @@ export async function POST(req: NextRequest) {
       const data = await submitRes.json();
       const text = data?.extraction?.result_text ?? "";
       if (!text) return NextResponse.json({ error: "No text extracted", raw: data }, { status: 422 });
-      return NextResponse.json({ text });
+      return NextResponse.json({ text, file_path: filePath });
     }
 
     if (submitRes.status === 202) {
@@ -80,7 +113,7 @@ export async function POST(req: NextRequest) {
       }
       const text = await pollUntilProcessed(whisperHash);
       if (!text) return NextResponse.json({ error: "No text extracted after polling" }, { status: 422 });
-      return NextResponse.json({ text });
+      return NextResponse.json({ text, file_path: filePath });
     }
 
     // Any other status = error

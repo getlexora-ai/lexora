@@ -1,11 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Upload, Pencil, Trash2 } from "lucide-react";
+import { Upload, Pencil, Trash2, FlaskConical, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { UploadModal } from "@/components/upload-modal";
 import { fileStore } from "@/lib/file-store";
-import { contractStore, SavedContract } from "@/lib/contract-store";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,10 +28,18 @@ const MEDIUM_COLOR = "#f59e0b"; // amber
 const LOW_COLOR    = "#3b82f6"; // blue
 
 // --- Types ---
-type DocEntry    = { month: string; docs: number };
-type FixEntry    = { month: string; fixes: number };
-type RiskEntry   = { month: string; high: number; medium: number; low: number };
-type Contract    = SavedContract;
+type DocEntry  = { month: string; docs: number };
+type FixEntry  = { month: string; fixes: number };
+type RiskEntry = { month: string; high: number; medium: number; low: number };
+type Contract  = {
+  id: string;
+  name: string;
+  contract_type: string;
+  risk_level: "high" | "medium" | "low" | null;
+  total_issues: number;
+  issues_fixed: number;
+  created_at: string;
+};
 
 const docsConfig  = { docs:   { label: "Documents", color: DOCS_COLOR  } };
 const fixesConfig = { fixes:  { label: "AI Fixes",  color: FIXES_COLOR } };
@@ -48,21 +55,77 @@ const axisProps = {
   tick: { fontSize: 11, fill: "#94a3b8" },
 } as const;
 
-export default function DashboardPage() {
-  const [contracts, setContracts] = useState<Contract[]>([]);
+const DUMMY_CONTRACT = {
+  name: "Master Service Agreement — Test Corp",
+  contract_type: "MSA",
+  extracted_text: "This is a test contract. Provider's liability shall be limited to one dollar ($1). All intellectual property created belongs exclusively to Provider in perpetuity.",
+  risk_level: "high" as const,
+  clauses: [
+    {
+      type: "high" as const,
+      clause: "Clause 3: Limitation of Liability",
+      passage: "Provider's liability shall be limited to one dollar ($1).",
+      issue: "Liability cap is unreasonably low",
+      suggestion: "Provider's total aggregate liability shall not exceed the total fees paid by Client in the twelve (12) months preceding the claim.",
+      sort_order: 0,
+    },
+    {
+      type: "medium" as const,
+      clause: "Clause 4: Intellectual Property",
+      passage: "All intellectual property created belongs exclusively to Provider in perpetuity.",
+      issue: "Client retains no IP rights",
+      suggestion: "All work product created by Provider solely in connection with the Services shall be deemed works made for hire and shall be the exclusive property of Client upon full payment of all fees.",
+      sort_order: 1,
+    },
+  ],
+};
 
-  // Load from localStorage on mount
-  useEffect(() => {
-    setContracts(contractStore.getAll());
-  }, []);
+export default function DashboardPage() {
+  const [contracts, setContracts]   = useState<Contract[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [seeding, setSeeding]       = useState(false);
+  const [seedError, setSeedError]   = useState<string | null>(null);
+
+  async function loadContracts() {
+    setLoading(true);
+    const res = await fetch("/api/contracts");
+    if (res.ok) {
+      const { contracts } = await res.json();
+      setContracts(contracts ?? []);
+    }
+    setLoading(false);
+  }
+
+  useEffect(() => { loadContracts(); }, []);
+
+  async function seedTestData() {
+    setSeeding(true);
+    setSeedError(null);
+    try {
+      const res = await fetch("/api/contracts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(DUMMY_CONTRACT),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setSeedError(`${res.status} — ${json.error ?? JSON.stringify(json)}`);
+      } else {
+        await loadContracts();
+      }
+    } catch (e) {
+      setSeedError(e instanceof Error ? e.message : "Unknown error");
+    }
+    setSeeding(false);
+  }
 
   // --- Summary stats derived from real contracts ---
   const totalDocuments = contracts.length;
-  const totalFixes     = contracts.reduce((s, c) => s + c.issuesFixed, 0);
+  const totalFixes     = contracts.reduce((s, c) => s + c.issues_fixed, 0);
   const currentRisk    = {
-    high:   contracts.filter(c => c.risk === "High").length,
-    medium: contracts.filter(c => c.risk === "Medium").length,
-    low:    contracts.filter(c => c.risk === "Low").length,
+    high:   contracts.filter(c => c.risk_level === "high").length,
+    medium: contracts.filter(c => c.risk_level === "medium").length,
+    low:    contracts.filter(c => c.risk_level === "low").length,
   };
 
   // --- Chart series data ---
@@ -103,14 +166,18 @@ export default function DashboardPage() {
     setEditName(contract.name);
   }
 
-  function saveEdit(id: string) {
-    contractStore.rename(id, editName);
+  async function saveEdit(id: string) {
+    await fetch(`/api/contracts/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: editName }),
+    });
     setContracts(prev => prev.map(c => c.id === id ? { ...c, name: editName } : c));
     setEditingId(null);
   }
 
-  function deleteContract(id: string) {
-    contractStore.remove(id);
+  async function deleteContract(id: string) {
+    await fetch(`/api/contracts/${id}`, { method: "DELETE" });
     setContracts(prev => prev.filter(c => c.id !== id));
   }
 
@@ -126,10 +193,21 @@ export default function DashboardPage() {
             Monitoring legal health and compliance risk across your portfolio.
           </p>
         </div>
-        <Button className="gap-2 shrink-0" onClick={() => setModalOpen(true)}>
-          <Upload className="h-4 w-4" />
-          Upload New Contract
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button variant="outline" className="gap-2" onClick={seedTestData} disabled={seeding}>
+            {seeding ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
+            Seed test data
+          </Button>
+          <Button className="gap-2" onClick={() => setModalOpen(true)}>
+            <Upload className="h-4 w-4" />
+            Upload New Contract
+          </Button>
+        </div>
+        {seedError && (
+          <div className="w-full rounded-md border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700 font-mono break-all">
+            <span className="font-bold">Seed error: </span>{seedError}
+          </div>
+        )}
         <UploadModal
           open={modalOpen}
           onClose={() => setModalOpen(false)}
@@ -267,10 +345,17 @@ export default function DashboardPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {contracts.length === 0 && (
+              {loading && (
                 <TableRow>
                   <TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">
-                    No saved contracts yet. Upload one to get started.
+                    <Loader2 className="inline h-4 w-4 animate-spin mr-2" />Loading contracts…
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && contracts.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">
+                    No contracts yet — upload one or click &quot;Seed test data&quot; to try it out.
                   </TableCell>
                 </TableRow>
               )}
@@ -281,7 +366,7 @@ export default function DashboardPage() {
                   onClick={() => {
                     if (editingId === contract.id) return;
                     router.push(
-                      `/review?file=${encodeURIComponent(contract.name)}&type=${encodeURIComponent(contract.contractType ?? "")}&contractId=${contract.id}`
+                      `/review?file=${encodeURIComponent(contract.name)}&type=${encodeURIComponent(contract.contract_type ?? "")}&contractId=${contract.id}`
                     );
                   }}
                 >
@@ -291,7 +376,7 @@ export default function DashboardPage() {
                         className="w-full rounded border border-border px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                         value={editName}
                         onChange={e => setEditName(e.target.value)}
-                        onKeyDown={e => e.key === "Enter" && saveEdit(contract.id)}
+                        onKeyDown={e => { if (e.key === "Enter") saveEdit(contract.id); }}
                         onClick={e => e.stopPropagation()}
                         autoFocus
                       />
@@ -300,7 +385,7 @@ export default function DashboardPage() {
                     )}
                   </TableCell>
                   <TableCell>
-                    {contract.issuesFixed >= contract.issues && contract.issues > 0 ? (
+                    {contract.issues_fixed >= contract.total_issues && contract.total_issues > 0 ? (
                       <Badge variant="outline" className="border-green-200 bg-green-50 text-green-700 hover:bg-green-50">
                         No Risk
                       </Badge>
@@ -308,20 +393,22 @@ export default function DashboardPage() {
                       <Badge
                         variant="outline"
                         className={
-                          contract.risk === "High"
+                          contract.risk_level === "high"
                             ? "border-red-200 bg-red-50 text-red-700"
-                            : contract.risk === "Medium"
+                            : contract.risk_level === "medium"
                             ? "border-amber-200 bg-amber-50 text-amber-700"
                             : "border-blue-200 bg-blue-50 text-blue-700"
                         }
                       >
-                        {contract.risk}
+                        {contract.risk_level ?? "—"}
                       </Badge>
                     )}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">{contract.issues}</TableCell>
-                  <TableCell className="text-muted-foreground">{contract.issuesFixed}</TableCell>
-                  <TableCell className="text-muted-foreground">{contract.saved}</TableCell>
+                  <TableCell className="text-muted-foreground">{contract.total_issues}</TableCell>
+                  <TableCell className="text-muted-foreground">{contract.issues_fixed}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {new Date(contract.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                  </TableCell>
                   <TableCell className="pr-6 text-right" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1">
                       {editingId === contract.id ? (

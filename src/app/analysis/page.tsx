@@ -6,7 +6,6 @@ import { ArrowLeft, FileText, CheckCircle2, XCircle, AlertCircle } from "lucide-
 import { Button } from "@/components/ui/button";
 import { fileStore } from "@/lib/file-store";
 import { analysisStore } from "@/lib/analysis-store";
-import { contractStore, SavedContract } from "@/lib/contract-store";
 
 type StepStatus = "pending" | "active" | "complete";
 
@@ -83,7 +82,7 @@ function AnalysisContent() {
           throw new Error(err.error ?? "Text extraction failed");
         }
 
-        const { text } = await extractRes.json();
+        const { text, file_path } = await extractRes.json();
         setStepStatus(0, "complete");
         setProgress(33);
 
@@ -119,30 +118,41 @@ function AnalysisContent() {
         await sleep(2000);
         if (cancelled) return;
 
-        // Store results for the review page
+        // Store results in memory for the review page
         analysisStore.set({ extractedText: text, clauses });
         fileStore.clear();
 
-        // Persist contract to localStorage
-        const highestRisk: SavedContract["risk"] = clauses.some((c: { type: string }) => c.type === "high")
-          ? "High"
+        // Persist to Supabase
+        const riskLevel = clauses.some((c: { type: string }) => c.type === "high")
+          ? "high"
           : clauses.some((c: { type: string }) => c.type === "medium")
-          ? "Medium"
-          : "Low";
+          ? "medium"
+          : "low";
 
-        const contractId = `contract-${Date.now()}`;
-        const saved: SavedContract = {
-          id: contractId,
-          name: fileName,
-          contractType,
-          risk: highestRisk,
-          issues: clauses.length,
-          issuesFixed: 0,
-          saved: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-        };
-        contractStore.add(saved);
-        contractStore.setData(contractId, { extractedText: text, clauses });
-        setContractId(contractId);
+        const saveRes = await fetch("/api/contracts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: fileName,
+            contract_type: contractType,
+            extracted_text: text,
+            file_path: file_path ?? null,
+            risk_level: riskLevel,
+            clauses: clauses.map((c: { type: string; clause: string; passage: string; issue: string; suggestion: string }, i: number) => ({
+              type: c.type,
+              clause: c.clause,
+              passage: c.passage,
+              issue: c.issue,
+              suggestion: c.suggestion,
+              sort_order: i,
+            })),
+          }),
+        });
+
+        if (saveRes.ok) {
+          const { id } = await saveRes.json();
+          setContractId(id);
+        }
 
         setStepStatus(2, "complete");
         setProgress(100);
@@ -166,7 +176,7 @@ function AnalysisContent() {
         <header className="sticky top-16 z-40 border-b bg-background/80 backdrop-blur-md">
           <div className="flex h-14 items-center px-8 gap-4">
             <button
-              onClick={() => router.push("/")}
+              onClick={() => router.push("/dashboard")}
               className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors group"
             >
               <ArrowLeft className="h-4 w-4 group-hover:-translate-x-0.5 transition-transform" />
@@ -181,7 +191,7 @@ function AnalysisContent() {
             </div>
             <h2 className="text-xl font-bold">Analysis Failed</h2>
             <p className="text-sm text-muted-foreground">{error}</p>
-            <Button onClick={() => router.push("/")}>Back to Dashboard</Button>
+            <Button onClick={() => router.push("/dashboard")}>Back to Dashboard</Button>
           </div>
         </main>
       </div>
@@ -195,7 +205,7 @@ function AnalysisContent() {
         <div className="flex h-14 items-center justify-between px-8">
           <div className="flex items-center gap-4">
             <button
-              onClick={() => router.push("/")}
+              onClick={() => router.push("/dashboard")}
               className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors group"
             >
               <ArrowLeft className="h-4 w-4 group-hover:-translate-x-0.5 transition-transform" />
@@ -313,7 +323,7 @@ function AnalysisContent() {
                 </Button>
               ) : (
                 <button
-                  onClick={() => router.push("/")}
+                  onClick={() => router.push("/dashboard")}
                   className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-destructive transition-colors"
                 >
                   <XCircle className="h-3.5 w-3.5" />

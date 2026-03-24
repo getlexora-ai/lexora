@@ -21,7 +21,6 @@ export async function GET(_req: NextRequest, { params }: Params) {
       )
     `)
     .eq("id", id)
-    .is("deleted_at", null)
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 404 });
@@ -56,16 +55,28 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   return NextResponse.json({ ok: true });
 }
 
-// DELETE /api/contracts/[id] — soft delete
+// DELETE /api/contracts/[id] — hard delete
 export async function DELETE(_req: NextRequest, { params }: Params) {
   const { id } = await params;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
 
+  // Also delete the stored file from Storage if one exists
+  const { data: contract } = await supabase
+    .from("contracts")
+    .select("file_path")
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .single();
+
+  if (contract?.file_path) {
+    await supabase.storage.from("contract_files").remove([contract.file_path]);
+  }
+
   const { error } = await supabase
     .from("contracts")
-    .update({ deleted_at: new Date().toISOString() })
+    .delete()
     .eq("id", id)
     .eq("user_id", user.id);
 

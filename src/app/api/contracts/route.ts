@@ -10,7 +10,6 @@ export async function GET() {
   const { data, error } = await supabase
     .from("contracts")
     .select("id, name, contract_type, risk_level, total_issues, issues_fixed, created_at")
-    .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -20,13 +19,15 @@ export async function GET() {
 // POST /api/contracts — create contract + bulk insert clauses after analysis
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  console.log("[POST /api/contracts] user:", user?.id ?? null, "authError:", authError?.message ?? null);
   if (!user) return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
 
   const body = await req.json() as {
     name: string;
     contract_type: string;
     extracted_text: string;
+    file_path?: string | null;
     risk_level: "high" | "medium" | "low";
     clauses: Array<{
       type: "high" | "medium" | "low";
@@ -46,6 +47,7 @@ export async function POST(req: NextRequest) {
       name: body.name,
       contract_type: body.contract_type,
       extracted_text: body.extracted_text,
+      file_path: body.file_path ?? null,
       risk_level: body.risk_level,
       total_issues: body.clauses.length,
       issues_fixed: 0,
@@ -53,6 +55,7 @@ export async function POST(req: NextRequest) {
     .select("id")
     .single();
 
+  console.log("[POST /api/contracts] insert result:", contract, "error:", contractError?.message ?? null);
   if (contractError) return NextResponse.json({ error: contractError.message }, { status: 500 });
 
   // Bulk insert clauses

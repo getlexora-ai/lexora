@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { LayoutDashboard, BookOpen, Scale, Settings, HelpCircle } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { LayoutDashboard, BookOpen, Scale, Settings, HelpCircle, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -19,6 +19,7 @@ const bottomLinks = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
 
   return (
     <aside className="hidden lg:flex flex-col w-72 shrink-0 border-r bg-muted/20 sticky top-16 h-[calc(100vh-64px)]">
@@ -61,8 +62,9 @@ export function Sidebar() {
 
       {/* Bottom — Generate Report + Settings + Support */}
       <div className="p-4 border-t bg-background/50 space-y-3">
-        <Button className="w-full" size="sm">
-          Generate Report
+        <Button className="w-full gap-2" size="sm" onClick={() => router.push("/dashboard?generate=1")}>
+          <Sparkles className="h-4 w-4" />
+          Generate Contract
         </Button>
         <nav className="space-y-0.5">
           {bottomLinks.map(({ label, icon: Icon, href }) => (

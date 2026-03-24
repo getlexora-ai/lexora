@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Upload, Pencil, Trash2, FlaskConical, Loader2, Sparkles } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { UploadModal } from "@/components/upload-modal";
 import { CreateContractModal } from "@/components/create-contract-modal";
 import { fileStore } from "@/lib/file-store";
@@ -159,8 +159,17 @@ export default function DashboardPage() {
 
 
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [modalOpen, setModalOpen]           = useState(false);
   const [createOpen, setCreateOpen]         = useState(false);
+
+  // Auto-open generate modal when sidebar navigates here with ?generate=1
+  useEffect(() => {
+    if (searchParams.get("generate") === "1") {
+      setCreateOpen(true);
+      router.replace("/dashboard");
+    }
+  }, [searchParams, router]);
   const [generating, setGenerating]         = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName]   = useState("");

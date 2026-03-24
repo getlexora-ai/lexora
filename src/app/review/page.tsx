@@ -1,7 +1,5 @@
 "use client";
 
-import "quill/dist/quill.snow.css";
-
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, ChevronRight, Sparkles, Send, Loader2, MessageSquare } from "lucide-react";

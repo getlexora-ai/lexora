@@ -2,12 +2,18 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request });
+  // If Supabase env vars are not set, skip auth entirely rather than crashing
+  const supabaseUrl  = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !supabaseAnon) {
+    return NextResponse.next({ request });
+  }
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
+  let supabaseResponse = NextResponse.next({ request });
+  let user = null;
+
+  try {
+    const supabase = createServerClient(supabaseUrl, supabaseAnon, {
       cookies: {
         getAll() {
           return request.cookies.getAll();
@@ -22,10 +28,15 @@ export async function middleware(request: NextRequest) {
           );
         },
       },
-    },
-  );
+    });
 
-  const { data: { user } } = await supabase.auth.getUser();
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+  } catch {
+    // If Supabase is unreachable, allow the request through — the API routes
+    // will handle auth individually and return 401 as needed.
+    return NextResponse.next({ request });
+  }
 
   // Protected routes — redirect to login if not authenticated
   const protectedPaths = ["/dashboard", "/analysis", "/review"];

@@ -86,6 +86,7 @@ function ReviewContent() {
   const fileName     = searchParams.get("file") ?? "Document";
   const contractType = searchParams.get("type") ?? "";
   const contractId   = searchParams.get("contractId");
+  const isCreateMode = searchParams.get("mode") === "create";
 
   // diskResult is always most up-to-date (remaining clauses + delta after fixes).
   // memResult is only set immediately after a fresh analysis — fall back to it
@@ -111,7 +112,7 @@ function ReviewContent() {
 
   // Ask AI chat state
   type ChatMsg = { role: "user" | "assistant"; content: string };
-  const [sidePanel, setSidePanel]     = useState<"issues" | "chat">("issues");
+  const [sidePanel, setSidePanel]     = useState<"issues" | "chat">(isCreateMode ? "chat" : "issues");
   const [chatHistory, setChatHistory] = useState<ChatMsg[]>([]);
   const [chatInput, setChatInput]     = useState("");
   const [chatLoading, setChatLoading] = useState(false);
@@ -449,17 +450,47 @@ function ReviewContent() {
     setChatLoading(true);
     saveChatMessage("user", q);
     try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question: q,
-          contractText: liveText(),
-          history: chatHistory,
-        }),
-      });
-      const data = await res.json();
-      const answer = data.answer ?? data.error ?? "No response.";
+      let answer = "";
+
+      if (isCreateMode) {
+        // In create mode: AI edits the document directly and explains what changed
+        const res = await fetch("/api/contract-edit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            instruction: q,
+            currentDocument: liveText(),
+            history: chatHistory,
+          }),
+        });
+        const data = await res.json();
+        answer = data.explanation ?? data.error ?? "Contract updated.";
+        if (data.updatedDocument && quillRef.current) {
+          quillRef.current.setText(data.updatedDocument);
+          quillRef.current.history.clear();
+          // Save updated delta to Supabase if we have a contractId
+          if (contractId) {
+            fetch(`/api/contracts/${contractId}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ quill_delta: quillRef.current.getContents() }),
+            }).catch(() => {});
+          }
+        }
+      } else {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            question: q,
+            contractText: liveText(),
+            history: chatHistory,
+          }),
+        });
+        const data = await res.json();
+        answer = data.answer ?? data.error ?? "No response.";
+      }
+
       setChatHistory(prev => [...prev, { role: "assistant", content: answer }]);
       saveChatMessage("assistant", answer);
     } finally {

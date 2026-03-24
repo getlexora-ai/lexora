@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Upload, Pencil, Trash2, FlaskConical, Loader2 } from "lucide-react";
+import { Upload, Pencil, Trash2, FlaskConical, Loader2, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { UploadModal } from "@/components/upload-modal";
+import { CreateContractModal } from "@/components/create-contract-modal";
 import { fileStore } from "@/lib/file-store";
+import { analysisStore } from "@/lib/analysis-store";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -157,7 +159,9 @@ export default function DashboardPage() {
 
 
   const router = useRouter();
-  const [modalOpen, setModalOpen] = useState(false);
+  const [modalOpen, setModalOpen]           = useState(false);
+  const [createOpen, setCreateOpen]         = useState(false);
+  const [generating, setGenerating]         = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName]   = useState("");
 
@@ -198,9 +202,13 @@ export default function DashboardPage() {
             {seeding ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
             Seed test data
           </Button>
+          <Button variant="outline" className="gap-2" onClick={() => setCreateOpen(true)}>
+            <Sparkles className="h-4 w-4" />
+            Generate Contract
+          </Button>
           <Button className="gap-2" onClick={() => setModalOpen(true)}>
             <Upload className="h-4 w-4" />
-            Upload New Contract
+            Upload Contract
           </Button>
         </div>
         {seedError && (
@@ -215,6 +223,30 @@ export default function DashboardPage() {
             fileStore.set(file);
             setModalOpen(false);
             router.push(`/analysis?file=${encodeURIComponent(name)}&type=${encodeURIComponent(contractType)}`);
+          }}
+        />
+        <CreateContractModal
+          open={createOpen}
+          onClose={() => setCreateOpen(false)}
+          generating={generating}
+          onGenerate={async ({ name, contractType, party1, party2, jurisdiction, keyTerms }) => {
+            setGenerating(true);
+            try {
+              const res = await fetch("/api/generate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ contractType, party1, party2, jurisdiction, keyTerms }),
+              });
+              const data = await res.json();
+              if (!data.text) throw new Error(data.error ?? "Generation failed");
+              analysisStore.set({ extractedText: data.text, clauses: [] });
+              setCreateOpen(false);
+              router.push(`/review?file=${encodeURIComponent(name)}&type=${encodeURIComponent(contractType)}&mode=create`);
+            } catch (err) {
+              console.error("[generate]", err);
+            } finally {
+              setGenerating(false);
+            }
           }}
         />
       </section>

@@ -7,14 +7,14 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const navLinks = [
-  { label: "Dashboard", icon: LayoutDashboard, href: "/" },
-  { label: "Clause Library", icon: BookOpen, href: "/clauses" },
-  { label: "Policies", icon: Scale, href: "/policies" },
+  { label: "Dashboard",     icon: LayoutDashboard, href: "/dashboard", soon: false },
+  { label: "Clause Library", icon: BookOpen,        href: "/clauses",   soon: true  },
+  { label: "Policies",      icon: Scale,            href: "/policies",  soon: true  },
 ];
 
 const bottomLinks = [
-  { label: "Settings", icon: Settings, href: "/settings" },
-  { label: "Support", icon: HelpCircle, href: "/support" },
+  { label: "Settings", icon: Settings,   href: "/settings", soon: true },
+  { label: "Support",  icon: HelpCircle, href: "/support",  soon: true },
 ];
 
 export function Sidebar() {
@@ -28,21 +28,34 @@ export function Sidebar() {
           AI Analysis
         </p>
         <nav className="space-y-0.5">
-          {navLinks.map(({ label, icon: Icon, href }) => (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors",
-                pathname === href
-                  ? "bg-accent text-accent-foreground font-semibold border border-border"
-                  : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
-              )}
-            >
-              <Icon className="h-[18px] w-[18px] shrink-0" />
-              <span>{label}</span>
-            </Link>
-          ))}
+          {navLinks.map(({ label, icon: Icon, href, soon }) =>
+            soon ? (
+              <div
+                key={href}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-muted-foreground/50 cursor-not-allowed select-none"
+              >
+                <Icon className="h-[18px] w-[18px] shrink-0" />
+                <span>{label}</span>
+                <span className="ml-auto text-[9px] font-bold uppercase tracking-widest border border-border rounded px-1 py-0.5">
+                  Soon
+                </span>
+              </div>
+            ) : (
+              <Link
+                key={href}
+                href={href}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors",
+                  pathname === href
+                    ? "bg-accent text-accent-foreground font-semibold border border-border"
+                    : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+                )}
+              >
+                <Icon className="h-[18px] w-[18px] shrink-0" />
+                <span>{label}</span>
+              </Link>
+            )
+          )}
         </nav>
       </div>
 
@@ -53,14 +66,16 @@ export function Sidebar() {
         </Button>
         <nav className="space-y-0.5">
           {bottomLinks.map(({ label, icon: Icon, href }) => (
-            <Link
+            <div
               key={href}
-              href={href}
-              className="flex items-center gap-3 px-2 py-2 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+              className="flex items-center gap-3 px-2 py-2 rounded-md text-sm text-muted-foreground/50 cursor-not-allowed select-none"
             >
               <Icon className="h-[18px] w-[18px] shrink-0" />
               <span className="font-medium">{label}</span>
-            </Link>
+              <span className="ml-auto text-[9px] font-bold uppercase tracking-widest border border-border rounded px-1 py-0.5">
+                Soon
+              </span>
+            </div>
           ))}
         </nav>
       </div>

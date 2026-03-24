@@ -118,11 +118,9 @@ function AnalysisContent() {
         await sleep(2000);
         if (cancelled) return;
 
-        // Store results in memory for the review page
-        analysisStore.set({ extractedText: text, clauses });
         fileStore.clear();
 
-        // Persist to Supabase
+        // Persist to Supabase first so we get real clause UUIDs back
         const riskLevel = clauses.some((c: { type: string }) => c.type === "high")
           ? "high"
           : clauses.some((c: { type: string }) => c.type === "medium")
@@ -149,10 +147,21 @@ function AnalysisContent() {
           }),
         });
 
+        // Remap temp clause IDs to real Supabase UUIDs so the review page can update them
+        let resolvedClauses = clauses;
         if (saveRes.ok) {
-          const { id } = await saveRes.json();
+          const { id, clauses: dbClauses } = await saveRes.json();
           setContractId(id);
+          if (Array.isArray(dbClauses) && dbClauses.length === clauses.length) {
+            resolvedClauses = clauses.map((c: { type: string; clause: string; passage: string; issue: string; suggestion: string }, i: number) => ({
+              ...c,
+              id: dbClauses[i]?.id ?? (c as { id?: string }).id,
+            }));
+          }
         }
+
+        // Store in memory with real IDs for the review page
+        analysisStore.set({ extractedText: text, clauses: resolvedClauses });
 
         setStepStatus(2, "complete");
         setProgress(100);

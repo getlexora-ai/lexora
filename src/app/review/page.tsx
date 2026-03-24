@@ -125,24 +125,79 @@ function ReviewContent() {
   const [selectionRefineNote, setSelectionRefineNote] = useState("");
   const [selectionRefineLoading, setSelectionRefineLoading] = useState(false);
 
-  // Sync remaining clauses to localStorage whenever a card is resolved
+  // On mount: fetch from Supabase when contractId is present.
+  // This is the source of truth for re-opens — gives us only pending clauses,
+  // the latest quill_delta (with green fix highlights), and the real issues_fixed count.
   useEffect(() => {
     if (!contractId) return;
-    contractStore.updateClauses(contractId, clauses);
-  }, [contractId, clauses]);
 
-  // Sync fix count — skip the initial mount call to avoid a redundant write
-  const mountedRef = useRef(false);
-  useEffect(() => {
-    if (!contractId) return;
-    if (!mountedRef.current) { mountedRef.current = true; return; }
-    contractStore.updateFixed(contractId, fixedCount);
-  }, [contractId, fixedCount]);
+    fetch(`/api/contracts/${contractId}`)
+      .then(r => r.json())
+      .then(({ contract }) => {
+        if (!contract) return;
+
+        // Only show clauses still pending in DB (replaced ones are gone)
+        const pending: RiskClause[] = (contract.risk_clauses ?? [])
+          .filter((c: { status: string }) => c.status === "pending")
+          .sort((a: { sort_order: number }, b: { sort_order: number }) => a.sort_order - b.sort_order)
+          .map((c: {
+            id: string; type: string; clause: string;
+            passage: string; issue: string;
+            suggestion: string; refined_suggestion?: string;
+          }) => ({
+            id: c.id,
+            type: c.type as RiskClause["type"],
+            clause: c.clause,
+            passage: c.passage,
+            issue: c.issue,
+            suggestion: c.refined_suggestion ?? c.suggestion,
+          }));
+
+        setClauses(pending);
+        setFixedCount(contract.issues_fixed ?? 0);
+
+        // Restore chat history from DB
+        fetch(`/api/contracts/${contractId}/chat`)
+          .then(r => r.json())
+          .then(({ messages }) => {
+            if (Array.isArray(messages) && messages.length > 0) {
+              setChatHistory(messages.map((m: { role: "user" | "assistant"; content: string }) => ({
+                role: m.role,
+                content: m.content,
+              })));
+            }
+          })
+          .catch(() => {/* non-critical */});
+
+        // Apply DB content to Quill — if Quill is already mounted apply now,
+        // otherwise store it so the Quill init effect picks it up.
+        const dbContent = {
+          delta: contract.quill_delta ?? undefined,
+          text:  contract.extracted_text ?? undefined,
+        };
+        const quill = quillRef.current;
+        if (quill) {
+          if (dbContent.delta) {
+            quill.setContents(dbContent.delta);
+          } else if (dbContent.text) {
+            quill.setText(dbContent.text);
+          }
+          quill.history.clear();
+        } else {
+          pendingDbContent.current = dbContent;
+        }
+      })
+      .catch(err => console.error("[review] fetch contract failed:", err));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contractId]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const quillRef        = useRef<any>(null);
   const containerRef    = useRef<HTMLDivElement>(null);
   const prevHighlight   = useRef<{ start: number; length: number } | null>(null);
+  // Holds the DB contract data when it arrives before Quill is ready
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pendingDbContent = useRef<{ delta?: any; text?: string } | null>(null);
 
   // Initialise Quill once on mount
   useEffect(() => {
@@ -165,16 +220,41 @@ function ReviewContent() {
         placeholder: "Extracted contract text will appear here…",
       });
 
-      if (diskResult?.delta) {
+      // Prefer DB content (arrived before Quill was ready) → then localStorage → then in-memory
+      const pending = pendingDbContent.current;
+      if (pending?.delta) {
+        quill.setContents(pending.delta);
+        pendingDbContent.current = null;
+      } else if (pending?.text) {
+        quill.setText(pending.text);
+        pendingDbContent.current = null;
+      } else if (diskResult?.delta) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         quill.setContents(diskResult.delta as any);
-        quill.history.clear();
       } else if (result?.extractedText) {
         quill.setText(result.extractedText);
-        quill.history.clear();
       }
+      quill.history.clear();
 
       quillRef.current = quill;
+
+      // Debounced auto-save: persist quill_delta to Supabase 2s after the user stops typing.
+      // Only fires for user-initiated changes (source === "user"), not programmatic ones.
+      let saveTimer: ReturnType<typeof setTimeout> | null = null;
+      quill.on("text-change", (_delta: unknown, _old: unknown, source: string) => {
+        if (source !== "user") return;
+        if (saveTimer) clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => {
+          const cid = searchParams.get("contractId");
+          if (!cid) return;
+          const contents = quill.getContents();
+          fetch(`/api/contracts/${cid}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ quill_delta: contents }),
+          }).catch(err => console.error("[quill text-change] save delta failed:", err));
+        }, 2000);
+      });
 
       // Show floating toolbar when user selects text
       quill.on("selection-change", (range) => {
@@ -272,8 +352,27 @@ function ReviewContent() {
       prevHighlight.current = null;
     }
 
-    // Persist the updated editor content so fixes survive re-opens
-    if (contractId) contractStore.updateDelta(contractId, quill.getContents());
+    const delta = quill.getContents();
+
+    // Persist to localStorage (fast, local fallback)
+    if (contractId) contractStore.updateDelta(contractId, delta);
+
+    // Persist to Supabase: update quill_delta + issues_fixed on contract
+    if (contractId) {
+      const newFixed = fixedCount + 1;
+      fetch(`/api/contracts/${contractId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quill_delta: delta, issues_fixed: newFixed }),
+      }).catch(err => console.error("[handleReplace] contract patch failed:", err));
+
+      // Update clause status to replaced
+      fetch(`/api/contracts/${contractId}/clauses/${card.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "replaced" }),
+      }).catch(err => console.error("[handleReplace] clause patch failed:", err));
+    }
 
     setClauses(prev => prev.filter(c => c.id !== card.id));
     setFixedCount(n => n + 1);
@@ -301,6 +400,26 @@ function ReviewContent() {
       });
       const data = await res.json();
       if (data.refined) {
+        // Save refinement record to Supabase
+        if (contractId) {
+          fetch(`/api/contracts/${contractId}/clauses/${card.id}/refinements`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              user_note:      refineNote.trim(),
+              refined_output: data.refined,
+              was_applied:    false,
+            }),
+          }).catch(err => console.error("[handleRefine] save refinement failed:", err));
+
+          // Also update the stored refined_suggestion on the clause row
+          fetch(`/api/contracts/${contractId}/clauses/${card.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ refined_suggestion: data.refined }),
+          }).catch(err => console.error("[handleRefine] clause patch failed:", err));
+        }
+
         setClauses(prev =>
           prev.map(c => c.id === card.id ? { ...c, suggestion: data.refined } : c)
         );
@@ -312,6 +431,15 @@ function ReviewContent() {
     }
   }
 
+  function saveChatMessage(role: "user" | "assistant", content: string) {
+    if (!contractId) return;
+    fetch(`/api/contracts/${contractId}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role, content }),
+    }).catch(err => console.error("[chat] save message failed:", err));
+  }
+
   async function handleChat() {
     const q = chatInput.trim();
     if (!q || chatLoading) return;
@@ -319,6 +447,7 @@ function ReviewContent() {
     setChatHistory(next);
     setChatInput("");
     setChatLoading(true);
+    saveChatMessage("user", q);
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -330,7 +459,9 @@ function ReviewContent() {
         }),
       });
       const data = await res.json();
-      setChatHistory(prev => [...prev, { role: "assistant", content: data.answer ?? data.error ?? "No response." }]);
+      const answer = data.answer ?? data.error ?? "No response.";
+      setChatHistory(prev => [...prev, { role: "assistant", content: answer }]);
+      saveChatMessage("assistant", answer);
     } finally {
       setChatLoading(false);
       requestAnimationFrame(() => chatBottomRef.current?.scrollIntoView({ behavior: "smooth" }));
@@ -427,6 +558,23 @@ function ReviewContent() {
           <div className="text-center space-y-3">
             <p className="text-muted-foreground text-sm">No analysis data found.</p>
             <Button variant="outline" onClick={() => router.push("/dashboard")}>Back to Dashboard</Button>
+          </div>
+        </main>
+      ) : activeTab !== "Review" ? (
+        <main className="flex-1 flex items-center justify-center">
+          <div className="text-center space-y-4">
+            <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mx-auto">
+              <Sparkles className="h-6 w-6 text-muted-foreground/50" />
+            </div>
+            <div className="space-y-1.5">
+              <h3 className="text-base font-semibold">{activeTab} — Coming Soon</h3>
+              <p className="text-sm text-muted-foreground max-w-xs">
+                This feature is on the roadmap and will be available in a future release.
+              </p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => setActiveTab("Review")}>
+              Back to Review
+            </Button>
           </div>
         </main>
       ) : (

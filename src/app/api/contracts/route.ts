@@ -71,9 +71,15 @@ export async function POST(req: NextRequest) {
       status: "pending" as const,
     }));
 
-    const { error: clausesError } = await supabase.from("risk_clauses").insert(rows);
+    const { data: insertedClauses, error: clausesError } = await supabase
+      .from("risk_clauses")
+      .insert(rows)
+      .select("id, sort_order");
     if (clausesError) return NextResponse.json({ error: clausesError.message }, { status: 500 });
+
+    const sortedClauses = (insertedClauses ?? []).sort((a, b) => a.sort_order - b.sort_order);
+    return NextResponse.json({ id: contract.id, clauses: sortedClauses }, { status: 201 });
   }
 
-  return NextResponse.json({ id: contract.id }, { status: 201 });
+  return NextResponse.json({ id: contract.id, clauses: [] }, { status: 201 });
 }

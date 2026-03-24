@@ -2,78 +2,96 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { History, Share2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
+import { usePathname, useRouter } from "next/navigation";
+import { LogOut } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import { useEffect, useState } from "react";
+import type { User } from "@supabase/supabase-js";
 
-const navLinks = [
-  { label: "Compare", href: "/compare" },
-  { label: "Version History", href: "/history" },
-  { label: "Approval", href: "/approval" },
-];
+const BARE_PAGES = ["/", "/login", "/signup"];
 
 export function Navbar() {
   const pathname = usePathname();
+  const router   = useRouter();
+  const [user, setUser] = useState<User | null>(null);
 
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => setUser(data.user));
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  async function handleSignOut() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/");
+    router.refresh();
+  }
+
+  // Landing / auth pages — minimal bar
+  if (BARE_PAGES.includes(pathname)) {
+    return (
+      <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur">
+        <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
+          <Link href="/" className="flex items-center">
+            <Image src="/logo.svg" alt="Lexora" width={100} height={32} priority />
+          </Link>
+          <div className="flex items-center gap-2">
+            {user ? (
+              <Link
+                href="/dashboard"
+                className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+              >
+                Go to dashboard
+              </Link>
+            ) : (
+              <>
+                <Link
+                  href="/login"
+                  className="rounded-md px-4 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                >
+                  Sign in
+                </Link>
+                <Link
+                  href="/signup"
+                  className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                >
+                  Get started
+                </Link>
+              </>
+            )}
+          </div>
+        </div>
+      </header>
+    );
+  }
+
+  // App pages — full navbar with sign out
   return (
     <header className="sticky top-0 z-50 border-b bg-background">
       <div className="mx-auto flex h-16 max-w-[1600px] items-center justify-between px-8">
-        {/* Left — logo + nav */}
-        <div className="flex items-center gap-8">
-          <Link href="/" className="flex items-center">
-            <Image src="/logo.svg" alt="Lexora" width={120} height={40} priority />
-          </Link>
+        <Link href="/dashboard" className="flex items-center">
+          <Image src="/logo.svg" alt="Lexora" width={100} height={32} priority />
+        </Link>
 
-          <nav className="hidden items-center gap-6 md:flex">
-            {navLinks.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={cn(
-                  "text-sm font-medium transition-colors hover:text-foreground",
-                  pathname === link.href
-                    ? "text-foreground"
-                    : "text-muted-foreground"
-                )}
-              >
-                {link.label}
-              </Link>
-            ))}
-          </nav>
-        </div>
-
-        {/* Right — actions */}
-        <div className="flex items-center gap-1">
-          <Tooltip>
-            <TooltipTrigger>
-              <Button variant="ghost" size="icon">
-                <History className="h-[18px] w-[18px]" />
-                <span className="sr-only">History</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>History</TooltipContent>
-          </Tooltip>
-
-          <Tooltip>
-            <TooltipTrigger>
-              <Button variant="ghost" size="icon">
-                <Share2 className="h-[18px] w-[18px]" />
-                <span className="sr-only">Share</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Share</TooltipContent>
-          </Tooltip>
-
-          {/* Placeholder — to be defined */}
-          <Button variant="outline" className="ml-2">
-            {/* blank for now */}
-          </Button>
+        <div className="flex items-center gap-2">
+          {user && (
+            <span className="mr-2 hidden truncate text-xs text-muted-foreground sm:block max-w-[180px]">
+              {user.email}
+            </span>
+          )}
+          <button
+            onClick={handleSignOut}
+            className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          >
+            <LogOut className="h-4 w-4" />
+            Sign out
+          </button>
         </div>
       </div>
     </header>

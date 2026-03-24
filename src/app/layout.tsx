@@ -25,6 +25,13 @@ export default function RootLayout({
       lang="en"
       className={`${openSans.variable} h-full antialiased`}
     >
+      <head>
+        {/* Quill snow theme — loaded from CDN to avoid bundler processing issues */}
+        <link
+          rel="stylesheet"
+          href="https://cdn.quilljs.com/2.0.3/quill.snow.css"
+        />
+      </head>
       <body className="min-h-full flex flex-col">
         <TooltipProvider>
           <Navbar />

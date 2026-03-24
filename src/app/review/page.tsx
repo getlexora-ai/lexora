@@ -104,6 +104,7 @@ function ReviewContent() {
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
   const [activeTab, setActiveTab]       = useState("Review");
   const [fixedCount, setFixedCount]     = useState(initialFixed);
+  const [dbLoading, setDbLoading]       = useState(!!contractId && !result);
 
   // Refine state: which card is open + user input + loading
   const [refiningId, setRefiningId]       = useState<string | null>(null);
@@ -187,7 +188,8 @@ function ReviewContent() {
           pendingDbContent.current = dbContent;
         }
       })
-      .catch(err => console.error("[review] fetch contract failed:", err));
+      .catch(err => console.error("[review] fetch contract failed:", err))
+      .finally(() => setDbLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contractId]);
 
@@ -501,7 +503,8 @@ function ReviewContent() {
     }
   }
 
-  const noData = !result;
+  // noData only when there's no in-memory/localStorage result AND no contractId to fetch from Supabase
+  const noData = !result && !contractId;
   const activeClause = clauses.find(c => c.id === activeCardId);
 
   return (
@@ -553,7 +556,14 @@ function ReviewContent() {
         </div>
       </header>
 
-      {noData ? (
+      {dbLoading ? (
+        <main className="flex-1 flex items-center justify-center">
+          <div className="text-center space-y-3">
+            <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">Loading contract…</p>
+          </div>
+        </main>
+      ) : noData ? (
         <main className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-3">
             <p className="text-muted-foreground text-sm">No analysis data found.</p>

@@ -741,20 +741,6 @@ function ReviewContent() {
                     {clauses.length} {clauses.length === 1 ? "issue" : "issues"} remaining
                   </p>
                 </div>
-                {contractId && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 text-xs gap-1.5 shrink-0"
-                    disabled={reanalysing}
-                    onClick={handleReanalyse}
-                  >
-                    {reanalysing
-                      ? <Loader2 className="h-3 w-3 animate-spin" />
-                      : <Sparkles className="h-3 w-3" />}
-                    {reanalysing ? "Analysing…" : "Re-analyse"}
-                  </Button>
-                )}
                 <div className="flex flex-wrap gap-1.5 justify-end">
                   {(["high", "medium", "low"] as Risk[]).map(r => {
                     const count = clauses.filter(c => c.type === r).length;
@@ -797,6 +783,18 @@ function ReviewContent() {
                   <div className="text-center py-12 text-sm text-muted-foreground">
                     All issues resolved.
                   </div>
+                )}
+                {contractId && (
+                  <Button
+                    variant="outline"
+                    className="w-full gap-2 text-xs"
+                    size="sm"
+                    disabled={reanalysing}
+                    onClick={handleReanalyse}
+                  >
+                    {reanalysing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                    {reanalysing ? "Analysing…" : "Re-analyse document"}
+                  </Button>
                 )}
                 {clauses.map(card => {
                   const style    = RISK_STYLES[card.type as Risk];

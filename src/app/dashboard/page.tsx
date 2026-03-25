@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { Upload, Pencil, Trash2, FlaskConical, Loader2, Sparkles } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { UploadModal } from "@/components/upload-modal";
@@ -82,7 +82,7 @@ const DUMMY_CONTRACT = {
   ],
 };
 
-export default function DashboardPage() {
+function DashboardContent() {
   const [contracts, setContracts]   = useState<Contract[]>([]);
   const [loading, setLoading]       = useState(true);
   const [seeding, setSeeding]       = useState(false);
@@ -497,5 +497,13 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense>
+      <DashboardContent />
+    </Suspense>
   );
 }

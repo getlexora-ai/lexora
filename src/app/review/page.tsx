@@ -117,6 +117,7 @@ function ReviewContent() {
   const [chatInput, setChatInput]     = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
+  const [reanalysing, setReanalysing] = useState(false);
 
   // Floating selection toolbar
   type SelectionToolbar = { top: number; left: number; text: string };
@@ -499,6 +500,26 @@ function ReviewContent() {
     }
   }
 
+  async function handleReanalyse() {
+    if (!contractId || reanalysing) return;
+    setReanalysing(true);
+    try {
+      const res = await fetch(`/api/contracts/${contractId}/reanalyse`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: liveText() }),
+      });
+      const data = await res.json();
+      if (data.clauses) {
+        setClauses(data.clauses);
+        setFixedCount(0);
+        setActiveCardId(null);
+      }
+    } finally {
+      setReanalysing(false);
+    }
+  }
+
   async function handleSelectionRefine() {
     if (!selectionToolbar || !selectionRefineNote.trim()) return;
     setSelectionRefineLoading(true);
@@ -719,6 +740,20 @@ function ReviewContent() {
                     {clauses.length} {clauses.length === 1 ? "issue" : "issues"} remaining
                   </p>
                 </div>
+                {contractId && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs gap-1.5 shrink-0"
+                    disabled={reanalysing}
+                    onClick={handleReanalyse}
+                  >
+                    {reanalysing
+                      ? <Loader2 className="h-3 w-3 animate-spin" />
+                      : <Sparkles className="h-3 w-3" />}
+                    {reanalysing ? "Analysing…" : "Re-analyse"}
+                  </Button>
+                )}
                 <div className="flex flex-wrap gap-1.5 justify-end">
                   {(["high", "medium", "low"] as Risk[]).map(r => {
                     const count = clauses.filter(c => c.type === r).length;

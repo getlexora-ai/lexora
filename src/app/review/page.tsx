@@ -606,14 +606,7 @@ function ReviewContent() {
         </div>
       </header>
 
-      {dbLoading ? (
-        <main className="flex-1 flex items-center justify-center">
-          <div className="text-center space-y-3">
-            <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">Loading contract…</p>
-          </div>
-        </main>
-      ) : noData ? (
+      {noData ? (
         <main className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-3">
             <p className="text-muted-foreground text-sm">No analysis data found.</p>
@@ -653,6 +646,14 @@ function ReviewContent() {
             {/* Quill mounts here — toolbar is injected above the ql-editor div */}
             <div className="flex-1 relative overflow-hidden">
               <div ref={containerRef} className="h-full flex flex-col overflow-hidden quill-host" />
+              {dbLoading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-background/60 backdrop-blur-sm z-10">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading contract…
+                  </div>
+                </div>
+              )}
 
               {/* Floating selection toolbar */}
               {selectionToolbar && (

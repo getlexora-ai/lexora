@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, ChevronRight, Sparkles, Send, Loader2, MessageSquare } from "lucide-react";
+import { ArrowLeft, ChevronRight, Sparkles, Send, Loader2, MessageSquare, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { analysisStore, RiskClause } from "@/lib/analysis-store";
 import { contractStore } from "@/lib/contract-store";
@@ -105,6 +105,16 @@ function ReviewContent() {
   const [fixedCount, setFixedCount]     = useState(initialFixed);
   const [dbLoading, setDbLoading]       = useState(!!contractId && !result);
 
+  // User corrections: dismissed ("not an issue") clauses + the "add missed issue" form
+  const [dismissedClauses, setDismissedClauses] = useState<RiskClause[]>([]);
+  const [dismissingId, setDismissingId]         = useState<string | null>(null);
+  const [dismissReason, setDismissReason]       = useState("");
+  const [showDismissed, setShowDismissed]       = useState(false);
+  const [addingIssue, setAddingIssue]           = useState(false);
+  const [addLoading, setAddLoading]             = useState(false);
+  const emptyAddForm = { passage: "", clause: "", type: "high" as Risk, issue: "", suggestion: "" };
+  const [addForm, setAddForm]                   = useState(emptyAddForm);
+
   // Refine state: which card is open + user input + loading
   const [refiningId, setRefiningId]       = useState<string | null>(null);
   const [refineNote, setRefineNote]       = useState("");
@@ -148,24 +158,30 @@ function ReviewContent() {
       .then(({ contract }) => {
         if (!contract) return;
 
+        type DbClause = {
+          id: string; type: string; clause: string;
+          passage: string; issue: string; status: string;
+          suggestion: string; refined_suggestion?: string;
+          source?: "ai" | "user"; sort_order: number;
+        };
+        const toClause = (c: DbClause): RiskClause => ({
+          id: c.id,
+          type: c.type as RiskClause["type"],
+          clause: c.clause,
+          passage: c.passage,
+          issue: c.issue,
+          suggestion: c.refined_suggestion ?? c.suggestion,
+          source: c.source ?? "ai",
+        });
+        const bySort = (a: DbClause, b: DbClause) => a.sort_order - b.sort_order;
+        const all: DbClause[] = contract.risk_clauses ?? [];
+
         // Only show clauses still pending in DB (replaced ones are gone)
-        const pending: RiskClause[] = (contract.risk_clauses ?? [])
-          .filter((c: { status: string }) => c.status === "pending")
-          .sort((a: { sort_order: number }, b: { sort_order: number }) => a.sort_order - b.sort_order)
-          .map((c: {
-            id: string; type: string; clause: string;
-            passage: string; issue: string;
-            suggestion: string; refined_suggestion?: string;
-          }) => ({
-            id: c.id,
-            type: c.type as RiskClause["type"],
-            clause: c.clause,
-            passage: c.passage,
-            issue: c.issue,
-            suggestion: c.refined_suggestion ?? c.suggestion,
-          }));
+        const pending = all.filter(c => c.status === "pending").sort(bySort).map(toClause);
+        const dismissed = all.filter(c => c.status === "dismissed").sort(bySort).map(toClause);
 
         setClauses(pending);
+        setDismissedClauses(dismissed);
         setFixedCount(contract.issues_fixed ?? 0);
 
         // Restore chat history from DB
@@ -370,16 +386,16 @@ function ReviewContent() {
     // Persist to localStorage (fast, local fallback)
     if (contractId) contractStore.updateDelta(contractId, delta);
 
-    // Persist to Supabase: update quill_delta + issues_fixed on contract
+    // Persist to Supabase: update quill_delta on the contract. The issues_fixed
+    // counter is bumped server-side by the clause PATCH below (status: replaced).
     if (contractId) {
-      const newFixed = fixedCount + 1;
       fetch(`/api/contracts/${contractId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ quill_delta: delta, issues_fixed: newFixed }),
+        body: JSON.stringify({ quill_delta: delta }),
       }).catch(err => console.error("[handleReplace] contract patch failed:", err));
 
-      // Update clause status to replaced
+      // Update clause status to replaced (also bumps contracts.issues_fixed)
       fetch(`/api/contracts/${contractId}/clauses/${card.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -390,6 +406,91 @@ function ReviewContent() {
     setClauses(prev => prev.filter(c => c.id !== card.id));
     setFixedCount(n => n + 1);
     setActiveCardId(null);
+  }
+
+  // "Not an issue" — dismiss a false-positive clause. Guests mutate local state only.
+  function handleDismiss(card: RiskClause, reason: string) {
+    if (contractId) {
+      fetch(`/api/contracts/${contractId}/clauses/${card.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "dismissed", dismissed_reason: reason || undefined }),
+      }).catch(err => console.error("[handleDismiss] clause patch failed:", err));
+    }
+    setClauses(prev => prev.filter(c => c.id !== card.id));
+    setDismissedClauses(prev => [card, ...prev.filter(c => c.id !== card.id)]);
+    setDismissingId(null);
+    setDismissReason("");
+    if (activeCardId === card.id) setActiveCardId(null);
+  }
+
+  // Restore a dismissed clause back into the active list.
+  function handleRestore(card: RiskClause) {
+    if (contractId) {
+      fetch(`/api/contracts/${contractId}/clauses/${card.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "pending" }),
+      }).catch(err => console.error("[handleRestore] clause patch failed:", err));
+    }
+    setDismissedClauses(prev => prev.filter(c => c.id !== card.id));
+    setClauses(prev => [...prev.filter(c => c.id !== card.id), card]);
+  }
+
+  // "+ Add issue" — record a clause the AI missed. Guests add to local state only.
+  async function handleAddIssue() {
+    const f = addForm;
+    const payload = {
+      type: f.type,
+      clause: f.clause.trim(),
+      passage: f.passage.trim(),
+      issue: f.issue.trim(),
+      suggestion: f.suggestion.trim(),
+    };
+    if (!payload.clause || !payload.passage || !payload.issue || !payload.suggestion) return;
+
+    setAddLoading(true);
+    try {
+      if (contractId) {
+        const res = await fetch(`/api/contracts/${contractId}/clauses`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.clause) {
+          setComputeError(data.error ?? "Could not add the issue. Please try again.");
+          return;
+        }
+        const c = data.clause as {
+          id: string; type: RiskClause["type"]; clause: string;
+          passage: string; issue: string; suggestion: string; refined_suggestion?: string;
+        };
+        setClauses(prev => [{
+          id: c.id,
+          type: c.type,
+          clause: c.clause,
+          passage: c.passage,
+          issue: c.issue,
+          suggestion: c.refined_suggestion ?? c.suggestion,
+          source: "user",
+        }, ...prev]);
+      } else {
+        setClauses(prev => [{
+          id: `user-${Date.now()}`,
+          type: payload.type,
+          clause: payload.clause,
+          passage: payload.passage,
+          issue: payload.issue,
+          suggestion: payload.suggestion,
+          source: "user",
+        }, ...prev]);
+      }
+      setAddForm(emptyAddForm);
+      setAddingIssue(false);
+    } finally {
+      setAddLoading(false);
+    }
   }
 
   // Always use the live Quill text so the AI sees fixes already applied
@@ -822,6 +923,84 @@ function ReviewContent() {
                     {reanalysing ? "Analysing…" : "Re-analyse document"}
                   </Button>
                 )}
+
+                {/* + Add issue — record a clause the AI missed */}
+                <Button
+                  variant="outline"
+                  className="w-full gap-2 text-xs"
+                  size="sm"
+                  onClick={() => { setAddingIssue(v => !v); setAddForm(emptyAddForm); }}
+                >
+                  {addingIssue ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                  {addingIssue ? "Cancel" : "Add issue"}
+                </Button>
+
+                {addingIssue && (
+                  <div className="rounded-lg border bg-card shadow-sm p-3 space-y-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      Add a missed issue
+                    </p>
+                    <textarea
+                      rows={2}
+                      placeholder="Passage — paste the exact text from the document"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+                      value={addForm.passage}
+                      onChange={e => setAddForm(f => ({ ...f, passage: e.target.value }))}
+                    />
+                    <input
+                      placeholder="Clause title — e.g. Clause 7: Indemnification"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                      value={addForm.clause}
+                      onChange={e => setAddForm(f => ({ ...f, clause: e.target.value }))}
+                    />
+                    <select
+                      className="w-full rounded-md border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                      value={addForm.type}
+                      onChange={e => setAddForm(f => ({ ...f, type: e.target.value as Risk }))}
+                    >
+                      <option value="high">High risk</option>
+                      <option value="medium">Medium risk</option>
+                      <option value="low">Low risk</option>
+                    </select>
+                    <input
+                      placeholder="Issue — what is legally problematic"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                      value={addForm.issue}
+                      onChange={e => setAddForm(f => ({ ...f, issue: e.target.value }))}
+                    />
+                    <textarea
+                      rows={2}
+                      placeholder="Suggested replacement clause"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+                      value={addForm.suggestion}
+                      onChange={e => setAddForm(f => ({ ...f, suggestion: e.target.value }))}
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        className="flex-1 text-xs h-7 gap-1"
+                        disabled={
+                          addLoading ||
+                          !addForm.passage.trim() || !addForm.clause.trim() ||
+                          !addForm.issue.trim() || !addForm.suggestion.trim()
+                        }
+                        onClick={handleAddIssue}
+                      >
+                        {addLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+                        {addLoading ? "Adding…" : "Add issue"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-xs h-7 px-2"
+                        onClick={() => { setAddingIssue(false); setAddForm(emptyAddForm); }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 {clauses.map(card => {
                   const style    = RISK_STYLES[card.type as Risk];
                   const isActive = card.id === activeCardId;
@@ -839,6 +1018,11 @@ function ReviewContent() {
                         <span className={`rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${style.badge}`}>
                           {style.label}
                         </span>
+                        {card.source === "user" && (
+                          <span className="ml-1.5 rounded border border-indigo-100 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-indigo-700">
+                            Added by you
+                          </span>
+                        )}
                         <h4 className={`text-sm font-semibold mt-2 mb-1 ${style.title}`}>{card.clause}</h4>
                         <p className="text-xs text-muted-foreground mb-2">{card.issue}</p>
 
@@ -913,10 +1097,96 @@ function ReviewContent() {
                             {isRefining ? "Cancel" : "Refine"}
                           </Button>
                         </div>
+
+                        {/* Not an issue — dismiss a false positive */}
+                        {dismissingId === card.id ? (
+                          <div className="mt-2" onClick={e => e.stopPropagation()}>
+                            <input
+                              autoFocus
+                              placeholder="Why isn't this an issue? (optional)"
+                              className="w-full rounded-md border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                              value={dismissReason}
+                              onChange={e => setDismissReason(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === "Enter") { e.preventDefault(); handleDismiss(card, dismissReason.trim()); }
+                                if (e.key === "Escape") { setDismissingId(null); setDismissReason(""); }
+                              }}
+                            />
+                            <div className="flex gap-2 mt-1.5">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="flex-1 text-xs h-7 gap-1"
+                                onClick={e => { e.stopPropagation(); handleDismiss(card, dismissReason.trim()); }}
+                              >
+                                Confirm — not an issue
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-xs h-7 px-2"
+                                onClick={e => { e.stopPropagation(); setDismissingId(null); setDismissReason(""); }}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            className="mt-2 flex w-full items-center justify-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+                            onClick={e => {
+                              e.stopPropagation();
+                              setDismissingId(card.id);
+                              setDismissReason("");
+                              setRefiningId(null);
+                            }}
+                          >
+                            <X className="h-3 w-3" />
+                            Not an issue
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
                 })}
+
+                {/* Dismissed clauses — collapsed by default */}
+                {dismissedClauses.length > 0 && (
+                  <div className="pt-2 border-t">
+                    <button
+                      className="flex w-full items-center justify-between py-1 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                      onClick={() => setShowDismissed(v => !v)}
+                    >
+                      <span>Dismissed ({dismissedClauses.length})</span>
+                      <ChevronRight className={`h-3.5 w-3.5 transition-transform ${showDismissed ? "rotate-90" : ""}`} />
+                    </button>
+                    {showDismissed && (
+                      <div className="mt-2 space-y-2">
+                        {dismissedClauses.map(card => (
+                          <div key={card.id} className="rounded-lg border bg-muted/30 px-3 py-2.5">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-xs font-semibold text-muted-foreground line-through">{card.clause}</p>
+                              {card.source === "user" && (
+                                <span className="shrink-0 rounded border border-indigo-100 bg-indigo-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-indigo-700">
+                                  Yours
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-muted-foreground/70 mt-0.5">{card.issue}</p>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="mt-1.5 h-6 text-[11px] px-2"
+                              onClick={() => handleRestore(card)}
+                            >
+                              Restore
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -928,7 +1198,7 @@ function ReviewContent() {
                     <div className="text-center py-10 space-y-2">
                       <Sparkles className="h-6 w-6 mx-auto text-muted-foreground/50" />
                       <p className="text-xs text-muted-foreground">Ask anything about this contract.</p>
-                      <p className="text-[11px] text-muted-foreground/60">e.g. "What are my termination rights?" or "Is this auto-renewal clause standard?"</p>
+                      <p className="text-[11px] text-muted-foreground/60">e.g. &ldquo;What are my termination rights?&rdquo; or &ldquo;Is this auto-renewal clause standard?&rdquo;</p>
                     </div>
                   )}
                   {chatHistory.map((msg, i) => (

@@ -23,7 +23,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
     const risk_clauses = await query(
       `select id, type, clause, passage, issue, suggestion,
-              refined_suggestion, status, sort_order, replaced_at
+              refined_suggestion, status, source, sort_order,
+              dismissed_reason, dismissed_at, replaced_at
          from risk_clauses
         where contract_id = $1
         order by sort_order`,

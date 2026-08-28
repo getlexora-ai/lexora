@@ -14,7 +14,7 @@ type SavePayload = {
   extracted_text: string;
   file_path: string | null;
   risk_level: "high" | "medium" | "low";
-  clauses: Array<{ type: string; clause: string; passage: string; issue: string; suggestion: string; sort_order: number }>;
+  clauses: Array<{ type: string; clause: string; passage: string; issue: string; suggestion: string; sort_order: number; source: "ai" | "user" }>;
 };
 
 type StepStatus = "pending" | "active" | "complete";
@@ -196,6 +196,7 @@ function AnalysisContent() {
             issue: c.issue,
             suggestion: c.suggestion,
             sort_order: i,
+            source: "ai" as const,
           })),
         };
 

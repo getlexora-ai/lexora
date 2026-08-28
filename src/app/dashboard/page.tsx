@@ -41,6 +41,7 @@ type Contract  = {
   risk_level: "high" | "medium" | "low" | null;
   total_issues: number;
   issues_fixed: number;
+  issues_dismissed: number;
   created_at: string;
 };
 
@@ -431,7 +432,7 @@ function DashboardContent() {
                 <TableHead className="pl-6">Contract Name</TableHead>
                 <TableHead>Risk</TableHead>
                 <TableHead>Issues</TableHead>
-                <TableHead>Issues Fixed</TableHead>
+                <TableHead>Resolved</TableHead>
                 <TableHead>Saved</TableHead>
                 <TableHead className="pr-6 text-right">Actions</TableHead>
               </TableRow>
@@ -477,7 +478,7 @@ function DashboardContent() {
                     )}
                   </TableCell>
                   <TableCell>
-                    {contract.issues_fixed >= contract.total_issues && contract.total_issues > 0 ? (
+                    {(contract.issues_fixed + (contract.issues_dismissed ?? 0)) >= contract.total_issues && contract.total_issues > 0 ? (
                       <Badge variant="outline" className="border-green-200 bg-green-50 text-green-700 hover:bg-green-50">
                         No Risk
                       </Badge>
@@ -497,7 +498,14 @@ function DashboardContent() {
                     )}
                   </TableCell>
                   <TableCell className="text-muted-foreground">{contract.total_issues}</TableCell>
-                  <TableCell className="text-muted-foreground">{contract.issues_fixed}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {contract.issues_fixed + (contract.issues_dismissed ?? 0)} / {contract.total_issues}
+                    {(contract.issues_dismissed ?? 0) > 0 && (
+                      <span className="ml-1 text-xs text-muted-foreground/70">
+                        ({contract.issues_fixed} fixed, {contract.issues_dismissed} dismissed)
+                      </span>
+                    )}
+                  </TableCell>
                   <TableCell className="text-muted-foreground">
                     {new Date(contract.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
                   </TableCell>

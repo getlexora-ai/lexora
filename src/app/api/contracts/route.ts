@@ -9,7 +9,7 @@ export async function GET() {
 
   try {
     const contracts = await query(
-      `select id, name, contract_type, risk_level, total_issues, issues_fixed, created_at
+      `select id, name, contract_type, risk_level, total_issues, issues_fixed, issues_dismissed, created_at
          from contracts
         where user_id = $1 and deleted_at is null
         order by created_at desc`,
@@ -39,6 +39,7 @@ export async function POST(req: NextRequest) {
       issue: string;
       suggestion: string;
       sort_order: number;
+      source?: "ai" | "user";
     }>;
   };
 
@@ -69,18 +70,19 @@ export async function POST(req: NextRequest) {
       const values: string[] = [];
       const params: unknown[] = [];
       body.clauses.forEach((c, i) => {
-        const b = i * 8;
+        const b = i * 9;
         values.push(
-          `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6}, $${b + 7}, $${b + 8})`,
+          `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6}, $${b + 7}, $${b + 8}, $${b + 9})`,
         );
         params.push(
           contract.id, c.type, c.clause, c.passage, c.issue, c.suggestion, c.sort_order, "pending",
+          c.source ?? "ai",
         );
       });
 
       const inserted = await query<{ id: string; sort_order: number }>(
         `insert into risk_clauses
-           (contract_id, type, clause, passage, issue, suggestion, sort_order, status)
+           (contract_id, type, clause, passage, issue, suggestion, sort_order, status, source)
          values ${values.join(", ")}
          returning id, sort_order`,
         params,

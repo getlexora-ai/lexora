@@ -8,6 +8,7 @@ export type RiskClause = {
   issue: string;        // what is legally problematic (brief)
   passage: string;      // exact verbatim text from the document
   suggestion: string;   // complete ready-to-use replacement clause
+  source?: "ai" | "user"; // "user" when the reviewer added it as a missed clause
 };
 
 export type AnalysisResult = {

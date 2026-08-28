@@ -26,6 +26,7 @@ create extension if not exists "pgcrypto";
 -- ============================================================
 create type risk_level        as enum ('high', 'medium', 'low');
 create type clause_status     as enum ('pending', 'replaced', 'dismissed');
+create type clause_source     as enum ('ai', 'user');
 create type org_member_role   as enum ('owner', 'admin', 'editor', 'viewer');
 create type approval_status   as enum ('pending', 'approved', 'rejected');
 create type chat_role         as enum ('user', 'assistant');
@@ -69,6 +70,7 @@ create table contracts (
   risk_level      risk_level,
   total_issues    int not null default 0,
   issues_fixed    int not null default 0,
+  issues_dismissed int not null default 0,
 
   -- soft delete
   deleted_at      timestamptz,
@@ -109,8 +111,11 @@ create table risk_clauses (
   refined_suggestion  text,                  -- set after user refines
 
   status              clause_status not null default 'pending',
+  source              clause_source not null default 'ai',  -- 'ai' analysis or 'user' correction
   sort_order          int not null default 0,
 
+  dismissed_reason    text,                  -- why the user marked this "not an issue"
+  dismissed_at        timestamptz,
   replaced_at         timestamptz,
   created_at          timestamptz not null default now()
 );

@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query, queryOne } from "@/lib/db";
-import { DEMO_USER_ID } from "@/lib/user";
+import { currentUserId, signInRequired } from "@/lib/auth";
 
-// GET /api/contracts — list all contracts in the shared workspace
+// GET /api/contracts — list the signed-in user's contracts (empty when signed out)
 export async function GET() {
+  const userId = await currentUserId();
+  if (!userId) return NextResponse.json({ contracts: [] });
+
   try {
     const contracts = await query(
       `select id, name, contract_type, risk_level, total_issues, issues_fixed, created_at
          from contracts
-        where user_id = $1
+        where user_id = $1 and deleted_at is null
         order by created_at desc`,
-      [DEMO_USER_ID],
+      [userId],
     );
     return NextResponse.json({ contracts });
   } catch (err) {
@@ -20,6 +23,9 @@ export async function GET() {
 
 // POST /api/contracts — create contract + bulk insert clauses after analysis
 export async function POST(req: NextRequest) {
+  const userId = await currentUserId();
+  if (!userId) return signInRequired();
+
   const body = await req.json() as {
     name: string;
     contract_type: string;
@@ -44,7 +50,7 @@ export async function POST(req: NextRequest) {
        values ($1, $2, $3, $4, $5, $6, $7, 0)
        returning id`,
       [
-        DEMO_USER_ID,
+        userId,
         body.name,
         body.contract_type,
         body.extracted_text,

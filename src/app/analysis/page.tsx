@@ -1,11 +1,21 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, FileText, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
+import { SignInButton, useUser } from "@clerk/nextjs";
+import { ArrowLeft, FileText, CheckCircle2, XCircle, AlertCircle, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { fileStore } from "@/lib/file-store";
 import { analysisStore } from "@/lib/analysis-store";
+
+type SavePayload = {
+  name: string;
+  contract_type: string;
+  extracted_text: string;
+  file_path: string | null;
+  risk_level: "high" | "medium" | "low";
+  clauses: Array<{ type: string; clause: string; passage: string; issue: string; suggestion: string; sort_order: number }>;
+};
 
 type StepStatus = "pending" | "active" | "complete";
 
@@ -43,15 +53,53 @@ function AnalysisContent() {
   const fileName     = searchParams.get("file") ?? "Document";
   const contractType = searchParams.get("type") ?? "";
 
+  const { isSignedIn } = useUser();
+
   const [steps, setSteps]       = useState<Step[]>(INITIAL_STEPS);
   const [progress, setProgress] = useState(0);
   const [done, setDone]         = useState(false);
   const [error, setError]       = useState<string | null>(null);
   const [contractId, setContractId] = useState<string | null>(null);
+  // Set when the analysis finished but the save was rejected because the visitor
+  // is signed out. Holds the payload so we can flush it once they sign in.
+  const [pendingSave, setPendingSave] = useState<{ body: SavePayload; clauses: unknown[] } | null>(null);
+  const [saving, setSaving] = useState(false);
 
   function setStepStatus(index: number, status: StepStatus) {
     setSteps(prev => prev.map((s, i) => i === index ? { ...s, status } : s));
   }
+
+  // Persist a contract to the DB and remap temp clause IDs to the real ones.
+  const persist = useCallback(async (body: SavePayload, clauses: unknown[]): Promise<boolean> => {
+    const res = await fetch("/api/contracts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (res.status === 401) return false; // signed out — caller shows the prompt
+    if (!res.ok) return false;
+
+    const { id, clauses: dbClauses } = await res.json();
+    setContractId(id);
+    let resolved = clauses as Array<{ id?: string }>;
+    if (Array.isArray(dbClauses) && dbClauses.length === clauses.length) {
+      resolved = (clauses as Array<Record<string, unknown>>).map((c, i) => ({
+        ...c,
+        id: dbClauses[i]?.id ?? (c as { id?: string }).id,
+      }));
+    }
+    analysisStore.set({ extractedText: body.extracted_text, clauses: resolved as never });
+    return true;
+  }, []);
+
+  // Once the visitor signs in, flush the save they couldn't complete.
+  useEffect(() => {
+    if (!isSignedIn || !pendingSave || contractId || saving) return;
+    setSaving(true);
+    persist(pendingSave.body, pendingSave.clauses)
+      .then(ok => { if (ok) setPendingSave(null); })
+      .finally(() => setSaving(false));
+  }, [isSignedIn, pendingSave, contractId, saving, persist]);
 
   useEffect(() => {
     let cancelled = false;
@@ -120,48 +168,33 @@ function AnalysisContent() {
 
         fileStore.clear();
 
-        // Persist to Supabase first so we get real clause UUIDs back
-        const riskLevel = clauses.some((c: { type: string }) => c.type === "high")
+        const riskLevel: "high" | "medium" | "low" = clauses.some((c: { type: string }) => c.type === "high")
           ? "high"
           : clauses.some((c: { type: string }) => c.type === "medium")
           ? "medium"
           : "low";
 
-        const saveRes = await fetch("/api/contracts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: fileName,
-            contract_type: contractType,
-            extracted_text: text,
-            file_path: file_path ?? null,
-            risk_level: riskLevel,
-            clauses: clauses.map((c: { type: string; clause: string; passage: string; issue: string; suggestion: string }, i: number) => ({
-              type: c.type,
-              clause: c.clause,
-              passage: c.passage,
-              issue: c.issue,
-              suggestion: c.suggestion,
-              sort_order: i,
-            })),
-          }),
-        });
+        const body: SavePayload = {
+          name: fileName,
+          contract_type: contractType,
+          extracted_text: text,
+          file_path: file_path ?? null,
+          risk_level: riskLevel,
+          clauses: clauses.map((c: { type: string; clause: string; passage: string; issue: string; suggestion: string }, i: number) => ({
+            type: c.type,
+            clause: c.clause,
+            passage: c.passage,
+            issue: c.issue,
+            suggestion: c.suggestion,
+            sort_order: i,
+          })),
+        };
 
-        // Remap temp clause IDs to real Supabase UUIDs so the review page can update them
-        let resolvedClauses = clauses;
-        if (saveRes.ok) {
-          const { id, clauses: dbClauses } = await saveRes.json();
-          setContractId(id);
-          if (Array.isArray(dbClauses) && dbClauses.length === clauses.length) {
-            resolvedClauses = clauses.map((c: { type: string; clause: string; passage: string; issue: string; suggestion: string }, i: number) => ({
-              ...c,
-              id: dbClauses[i]?.id ?? (c as { id?: string }).id,
-            }));
-          }
-        }
-
-        // Store in memory with real IDs for the review page
-        analysisStore.set({ extractedText: text, clauses: resolvedClauses });
+        // Keep the analysis viewable regardless; persist if signed in, otherwise
+        // stash it and let the "sign in to save" prompt flush it later.
+        analysisStore.set({ extractedText: text, clauses });
+        const saved = await persist(body, clauses);
+        if (!saved && !cancelled) setPendingSave({ body, clauses });
 
         setStepStatus(2, "complete");
         setProgress(100);
@@ -175,6 +208,7 @@ function AnalysisContent() {
 
     run();
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contractType]);
 
   const completeCount = steps.filter(s => s.status === "complete").length;
@@ -312,6 +346,27 @@ function AnalysisContent() {
                 </div>
               ))}
             </div>
+
+            {/* Sign-in-to-save prompt */}
+            {done && !contractId && (pendingSave || saving) && (
+              <div className="border-t bg-amber-50 px-8 py-4">
+                {saving ? (
+                  <p className="text-sm font-medium text-amber-800">Saving your contract…</p>
+                ) : (
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-sm text-amber-900">
+                      <Lock className="h-4 w-4 shrink-0" />
+                      <span>This analysis won&apos;t be saved. Sign in to keep it and edit it later.</span>
+                    </div>
+                    <SignInButton mode="modal">
+                      <button className="rounded-md bg-amber-600 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-amber-700">
+                        Sign in to save
+                      </button>
+                    </SignInButton>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Footer */}
             <div className="border-t bg-muted/30 px-8 py-4 flex items-center justify-between">

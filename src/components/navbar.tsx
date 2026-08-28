@@ -3,11 +3,49 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import {
+  SignInButton,
+  SignUpButton,
+  UserButton,
+  useUser,
+} from "@clerk/nextjs";
 
 const BARE_PAGES = ["/"];
 
 export function Navbar() {
   const pathname = usePathname();
+  const { isLoaded, isSignedIn } = useUser();
+
+  const authControls = (
+    <div className="flex items-center gap-3">
+      {!isLoaded ? null : isSignedIn ? (
+        <>
+          {BARE_PAGES.includes(pathname) && (
+            <Link
+              href="/dashboard"
+              className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              Go to dashboard
+            </Link>
+          )}
+          <UserButton />
+        </>
+      ) : (
+        <>
+          <SignInButton mode="modal">
+            <button className="rounded-md px-4 py-1.5 text-sm font-medium transition-colors hover:bg-muted">
+              Sign in
+            </button>
+          </SignInButton>
+          <SignUpButton mode="modal">
+            <button className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">
+              Sign up
+            </button>
+          </SignUpButton>
+        </>
+      )}
+    </div>
+  );
 
   // Landing page — minimal bar
   if (BARE_PAGES.includes(pathname)) {
@@ -17,12 +55,7 @@ export function Navbar() {
           <Link href="/" className="flex items-center">
             <Image src="/logo.svg" alt="Lexora" width={100} height={32} priority />
           </Link>
-          <Link
-            href="/dashboard"
-            className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-          >
-            Go to dashboard
-          </Link>
+          {authControls}
         </div>
       </header>
     );
@@ -35,6 +68,7 @@ export function Navbar() {
         <Link href="/dashboard" className="flex items-center">
           <Image src="/logo.svg" alt="Lexora" width={100} height={32} priority />
         </Link>
+        {authControls}
       </div>
     </header>
   );

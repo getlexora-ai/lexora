@@ -1,3 +1,5 @@
+import { ClerkProvider } from "@clerk/nextjs";
+import { shadcn } from "@clerk/ui/themes";
 import type { Metadata } from "next";
 import { Open_Sans } from "next/font/google";
 import "./globals.css";
@@ -33,10 +35,12 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-full flex flex-col">
-        <TooltipProvider>
-          <Navbar />
-          {children}
-        </TooltipProvider>
+        <ClerkProvider appearance={{ theme: shadcn }}>
+          <TooltipProvider>
+            <Navbar />
+            {children}
+          </TooltipProvider>
+        </ClerkProvider>
       </body>
     </html>
   );

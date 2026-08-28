@@ -1,20 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query, queryOne } from "@/lib/db";
-import { DEMO_USER_ID } from "@/lib/user";
+import { currentUserId, signInRequired } from "@/lib/auth";
 
 type Params = { params: Promise<{ id: string }> };
 
-// GET /api/contracts/[id] — fetch contract + its clauses
+// GET /api/contracts/[id] — fetch contract + its clauses (owner only)
 export async function GET(_req: NextRequest, { params }: Params) {
   const { id } = await params;
+  const userId = await currentUserId();
+  if (!userId) return signInRequired();
 
   try {
     const contract = await queryOne(
       `select id, name, contract_type, extracted_text, quill_delta,
               risk_level, total_issues, issues_fixed, created_at
          from contracts
-        where id = $1`,
-      [id],
+        where id = $1 and user_id = $2 and deleted_at is null`,
+      [id, userId],
     );
 
     if (!contract) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -37,6 +39,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
 // PATCH /api/contracts/[id] — update name, quill_delta, issues_fixed
 export async function PATCH(req: NextRequest, { params }: Params) {
   const { id } = await params;
+  const userId = await currentUserId();
+  if (!userId) return signInRequired();
 
   const body = await req.json() as {
     name?: string;
@@ -57,7 +61,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   if (sets.length === 0) return NextResponse.json({ ok: true });
 
-  values.push(id, DEMO_USER_ID);
+  values.push(id, userId);
 
   try {
     await query(
@@ -74,11 +78,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 // DELETE /api/contracts/[id] — hard delete
 export async function DELETE(_req: NextRequest, { params }: Params) {
   const { id } = await params;
+  const userId = await currentUserId();
+  if (!userId) return signInRequired();
 
   try {
     await query(
       `delete from contracts where id = $1 and user_id = $2`,
-      [id, DEMO_USER_ID],
+      [id, userId],
     );
     return NextResponse.json({ ok: true });
   } catch (err) {

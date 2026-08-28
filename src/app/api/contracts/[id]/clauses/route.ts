@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { currentUserId, ownsContract, signInRequired } from "@/lib/auth";
 
 type Params = { params: Promise<{ id: string }> };
 
-// GET /api/contracts/[id]/clauses — list pending clauses for a contract
+// GET /api/contracts/[id]/clauses — list pending clauses (owner only)
 export async function GET(_req: NextRequest, { params }: Params) {
   const { id } = await params;
+  const userId = await currentUserId();
+  if (!userId) return signInRequired();
+  if (!(await ownsContract(id, userId))) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
   try {
     const clauses = await query(

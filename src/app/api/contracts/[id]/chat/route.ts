@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query, queryOne } from "@/lib/db";
+import { currentUserId, ownsContract, signInRequired } from "@/lib/auth";
 
 type Params = { params: Promise<{ id: string }> };
 
-// GET /api/contracts/[id]/chat — load chat history for a contract
+// GET /api/contracts/[id]/chat — load chat history (owner only)
 export async function GET(_req: NextRequest, { params }: Params) {
   const { id } = await params;
+  const userId = await currentUserId();
+  if (!userId) return signInRequired();
+  if (!(await ownsContract(id, userId))) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
   try {
     const messages = await query(
@@ -24,6 +30,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
 // POST /api/contracts/[id]/chat — save a message (user or assistant)
 export async function POST(req: NextRequest, { params }: Params) {
   const { id } = await params;
+  const userId = await currentUserId();
+  if (!userId) return signInRequired();
+  if (!(await ownsContract(id, userId))) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
   const { role, content } = await req.json() as {
     role: "user" | "assistant";

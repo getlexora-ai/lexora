@@ -6,9 +6,10 @@
 --
 -- Differences from the old supabase/schema.sql:
 --   * no foreign keys to auth.users (that schema is Supabase-only) —
---     user_id / created_by / etc. are plain uuid columns
---   * no Row-Level Security / auth.uid() policies (the app has no auth,
---     every row is owned by DEMO_USER_ID — see src/lib/user.ts)
+--     user_id / created_by / etc. are plain text columns holding Clerk
+--     user IDs (e.g. "user_2ab…")
+--   * no Row-Level Security / auth.uid() policies — ownership is enforced
+--     in the API route handlers via the Clerk session (see src/lib/auth.ts)
 --   * no storage.* bucket policies (Supabase Storage is gone; the original
 --     file is referenced by contracts.file_path, wherever you choose to
 --     store it)
@@ -41,7 +42,7 @@ create table organisations (
 
 create table org_members (
   org_id      uuid not null references organisations (id) on delete cascade,
-  user_id     uuid not null,
+  user_id     text not null,
   role        org_member_role not null default 'viewer',
   primary key (org_id, user_id)
 );
@@ -52,7 +53,7 @@ create table org_members (
 -- ============================================================
 create table contracts (
   id              uuid primary key default gen_random_uuid(),
-  user_id         uuid not null,
+  user_id         text not null,
   org_id          uuid references organisations (id) on delete set null,
 
   -- display
@@ -141,7 +142,7 @@ create table contract_versions (
 
   quill_delta      jsonb not null,
   snapshot_reason  text,             -- e.g. "After fix: Liability Cap", "Manual edit"
-  created_by       uuid,
+  created_by       text,
 
   created_at       timestamptz not null default now()
 );
@@ -170,7 +171,7 @@ create index chat_messages_contract_id_idx on chat_messages (contract_id, create
 -- ============================================================
 create table clause_library (
   id              uuid primary key default gen_random_uuid(),
-  user_id         uuid not null,
+  user_id         text not null,
   org_id          uuid references organisations (id) on delete cascade,
 
   title           text not null,
@@ -191,7 +192,7 @@ create index clause_library_user_id_idx on clause_library (user_id, clause_type)
 create table clause_comments (
   id          uuid primary key default gen_random_uuid(),
   clause_id   uuid not null references risk_clauses (id) on delete cascade,
-  user_id     uuid not null,
+  user_id     text not null,
 
   content     text not null,
 
@@ -205,7 +206,7 @@ create table clause_comments (
 create table approval_requests (
   id            uuid primary key default gen_random_uuid(),
   contract_id   uuid not null references contracts (id) on delete cascade,
-  requested_by  uuid not null,
+  requested_by  text not null,
 
   status        approval_status not null default 'pending',
 
@@ -215,7 +216,7 @@ create table approval_requests (
 create table approval_decisions (
   id                   uuid primary key default gen_random_uuid(),
   approval_request_id  uuid not null references approval_requests (id) on delete cascade,
-  decided_by           uuid not null,
+  decided_by           text not null,
 
   decision             approval_status not null,
   note                 text,

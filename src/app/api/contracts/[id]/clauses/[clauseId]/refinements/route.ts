@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { currentUserId, ownsContract, signInRequired } from "@/lib/auth";
 
-type Params = { params: Promise<{ clauseId: string }> };
+type Params = { params: Promise<{ id: string; clauseId: string }> };
 
 // POST /api/contracts/[id]/clauses/[clauseId]/refinements
 // Saves a refinement attempt (user note + Claude output) to clause_refinements table
 export async function POST(req: NextRequest, { params }: Params) {
-  const { clauseId } = await params;
+  const { id, clauseId } = await params;
+  const userId = await currentUserId();
+  if (!userId) return signInRequired();
+  if (!(await ownsContract(id, userId))) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
   const body = await req.json() as {
     user_note: string;

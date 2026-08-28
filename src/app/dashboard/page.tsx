@@ -1,8 +1,9 @@
 "use client";
 
 import { Suspense, useState, useEffect } from "react";
-import { Upload, Pencil, Trash2, FlaskConical, Loader2, Sparkles } from "lucide-react";
+import { Upload, Pencil, Trash2, FlaskConical, Loader2, Sparkles, Lock } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { SignInButton, useUser } from "@clerk/nextjs";
 import { UploadModal } from "@/components/upload-modal";
 import { CreateContractModal } from "@/components/create-contract-modal";
 import { fileStore } from "@/lib/file-store";
@@ -83,6 +84,7 @@ const DUMMY_CONTRACT = {
 };
 
 function DashboardContent() {
+  const { isLoaded, isSignedIn } = useUser();
   const [contracts, setContracts]   = useState<Contract[]>([]);
   const [loading, setLoading]       = useState(true);
   const [seeding, setSeeding]       = useState(false);
@@ -110,7 +112,9 @@ function DashboardContent() {
         body: JSON.stringify(DUMMY_CONTRACT),
       });
       const json = await res.json();
-      if (!res.ok) {
+      if (res.status === 401) {
+        setSeedError("Sign in to save contracts.");
+      } else if (!res.ok) {
         setSeedError(`${res.status} — ${json.error ?? JSON.stringify(json)}`);
       } else {
         await loadContracts();
@@ -196,6 +200,21 @@ function DashboardContent() {
 
   return (
     <div className="px-8 py-10 space-y-8 max-w-[1200px]">
+      {/* Guest banner — contracts can be analysed but not saved without an account */}
+      {isLoaded && !isSignedIn && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+          <div className="flex items-center gap-2 text-sm text-amber-900">
+            <Lock className="h-4 w-4 shrink-0" />
+            <span>You&apos;re browsing as a guest. You can analyse a contract, but saving requires an account.</span>
+          </div>
+          <SignInButton mode="modal">
+            <button className="rounded-md bg-amber-600 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-amber-700">
+              Sign in
+            </button>
+          </SignInButton>
+        </div>
+      )}
+
       {/* Header */}
       <section className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div className="space-y-1.5">
@@ -221,8 +240,8 @@ function DashboardContent() {
           </Button>
         </div>
         {seedError && (
-          <div className="w-full rounded-md border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700 font-mono break-all">
-            <span className="font-bold">Seed error: </span>{seedError}
+          <div className="w-full rounded-md border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700 break-all">
+            {seedError}
           </div>
         )}
         <UploadModal
@@ -263,6 +282,11 @@ function DashboardContent() {
                 }),
               });
               const saveData = await saveRes.json();
+              if (saveRes.status === 401) {
+                setSeedError("Sign in to save a generated contract.");
+                setCreateOpen(false);
+                return;
+              }
               if (!saveRes.ok) throw new Error(saveData.error ?? "Failed to save contract");
 
               setCreateOpen(false);

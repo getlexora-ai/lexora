@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query, queryOne } from "@/lib/db";
-import { DEMO_USER_ID } from "@/lib/user";
+import { currentUserId, ownsContract, signInRequired } from "@/lib/auth";
 
 type Params = { params: Promise<{ id: string }> };
 
-// GET /api/contracts/[id]/versions — list version snapshots
+// GET /api/contracts/[id]/versions — list version snapshots (owner only)
 export async function GET(_req: NextRequest, { params }: Params) {
   const { id } = await params;
+  const userId = await currentUserId();
+  if (!userId) return signInRequired();
+  if (!(await ownsContract(id, userId))) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
   try {
     const versions = await query(
@@ -25,6 +30,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
 // POST /api/contracts/[id]/versions — save a snapshot of the current delta
 export async function POST(req: NextRequest, { params }: Params) {
   const { id } = await params;
+  const userId = await currentUserId();
+  if (!userId) return signInRequired();
+  if (!(await ownsContract(id, userId))) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
   const { quill_delta, snapshot_reason } = await req.json() as {
     quill_delta: object;
@@ -36,7 +46,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       `insert into contract_versions (contract_id, quill_delta, snapshot_reason, created_by)
        values ($1, $2, $3, $4)
        returning id`,
-      [id, JSON.stringify(quill_delta), snapshot_reason ?? null, DEMO_USER_ID],
+      [id, JSON.stringify(quill_delta), snapshot_reason ?? null, userId],
     );
     return NextResponse.json({ id: row?.id }, { status: 201 });
   } catch (err) {

@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query, queryOne } from "@/lib/db";
+import { currentUserId, ownsClause, signInRequired } from "@/lib/auth";
 
 type Params = { params: Promise<{ clauseId: string }> };
 
-// GET /api/clauses/[clauseId]/refinements — list all refinement attempts
+// GET /api/clauses/[clauseId]/refinements — list all refinement attempts (owner only)
 export async function GET(_req: NextRequest, { params }: Params) {
   const { clauseId } = await params;
+  const userId = await currentUserId();
+  if (!userId) return signInRequired();
+  if (!(await ownsClause(clauseId, userId))) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
   try {
     const refinements = await query(
@@ -24,6 +30,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
 // POST /api/clauses/[clauseId]/refinements — log a refinement attempt
 export async function POST(req: NextRequest, { params }: Params) {
   const { clauseId } = await params;
+  const userId = await currentUserId();
+  if (!userId) return signInRequired();
+  if (!(await ownsClause(clauseId, userId))) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
   const { user_note, refined_output, was_applied } = await req.json() as {
     user_note: string;

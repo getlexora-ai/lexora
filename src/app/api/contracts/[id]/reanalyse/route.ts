@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { askLLM } from "@/lib/llm";
 import { query } from "@/lib/db";
+import { currentUserId, ownsContract, signInRequired } from "@/lib/auth";
 import { RiskClause } from "@/lib/analysis-store";
 
 const REVIEW_PROMPT = `You are a senior commercial contracts attorney. Review the contract below and identify 5-8 risky or non-standard clauses.
@@ -36,6 +37,11 @@ type Params = { params: Promise<{ id: string }> };
 // POST /api/contracts/[id]/reanalyse — re-run AI analysis on current document text
 export async function POST(req: NextRequest, { params }: Params) {
   const { id } = await params;
+  const userId = await currentUserId();
+  if (!userId) return signInRequired();
+  if (!(await ownsContract(id, userId))) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
   const { text } = await req.json() as { text: string };
   if (!text?.trim()) return NextResponse.json({ error: "No text provided" }, { status: 400 });

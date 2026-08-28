@@ -276,7 +276,11 @@ function DashboardContent() {
                 setCreateOpen(false);
                 return;
               }
-              if (!genData.text) throw new Error(genData.error ?? "Generation failed");
+              if (!genRes.ok || !genData.text) {
+                setSeedError(genData.message ?? "Couldn't generate the contract. Please try again.");
+                setCreateOpen(false);
+                return;
+              }
 
               // Step 2: Save to Supabase so edits and chat are persisted
               const saveRes = await fetch("/api/contracts", {
@@ -296,7 +300,11 @@ function DashboardContent() {
                 setCreateOpen(false);
                 return;
               }
-              if (!saveRes.ok) throw new Error(saveData.error ?? "Failed to save contract");
+              if (!saveRes.ok) {
+                setSeedError(saveData.message ?? "Couldn't save the generated contract. Please try again.");
+                setCreateOpen(false);
+                return;
+              }
 
               setCreateOpen(false);
               await loadContracts();
@@ -305,6 +313,7 @@ function DashboardContent() {
               );
             } catch (err) {
               console.error("[generate]", err);
+              setSeedError("Couldn't generate the contract. Please try again.");
             } finally {
               setGenerating(false);
             }

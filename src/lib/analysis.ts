@@ -1,4 +1,5 @@
 import { askLLM } from "@/lib/llm";
+import { AppError } from "@/lib/errors";
 
 export type Issue = {
   passage: string;
@@ -113,5 +114,9 @@ export async function analyseContract(text: string): Promise<Issue[]> {
     }
   }
 
-  throw new Error("Analysis did not return any usable clauses");
+  throw new AppError(
+    422,
+    "analysis_failed",
+    "The analysis didn't produce a usable result. Please try again.",
+  );
 }

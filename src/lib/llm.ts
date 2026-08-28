@@ -1,6 +1,8 @@
 // Thin LLM adapter over Google's Gemini REST API.
 // Every AI route in the app goes through askLLM() so the provider lives in one place.
 
+import { AppError } from "@/lib/errors";
+
 const API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
 // Pinned on purpose: the `gemini-flash-latest` alias is frequently 503 "high
@@ -44,7 +46,7 @@ export async function askLLM({
   responseSchema,
 }: AskArgs): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error("GEMINI_API_KEY is not set");
+  if (!apiKey) throw new AppError(500, "llm_config", "The AI service isn't configured yet.");
 
   const turns: Turn[] = messages ?? (prompt ? [{ role: "user", content: prompt }] : []);
   if (turns.length === 0) throw new Error("askLLM: no prompt or messages provided");
@@ -84,13 +86,21 @@ export async function askLLM({
   }
 
   if (!res.ok) {
-    throw new Error(`Gemini ${res.status}: ${await res.text()}`);
+    const body = await res.text();
+    console.error(`[llm] Gemini ${res.status}: ${body}`);
+    if (res.status === 503 || res.status === 429) {
+      throw new AppError(503, "llm_busy", "The AI service is busy right now. Please try again in a moment.");
+    }
+    throw new AppError(502, "llm_error", "The AI service returned an error. Please try again.");
   }
 
   const data = await res.json();
 
   const blocked = data?.promptFeedback?.blockReason;
-  if (blocked) throw new Error(`Gemini blocked the prompt: ${blocked}`);
+  if (blocked) {
+    console.error(`[llm] Gemini blocked the prompt: ${blocked}`);
+    throw new AppError(422, "llm_blocked", "That request couldn't be processed by the AI service.");
+  }
 
   const parts = data?.candidates?.[0]?.content?.parts ?? [];
   const text = parts
@@ -100,7 +110,8 @@ export async function askLLM({
 
   if (!text) {
     const finish = data?.candidates?.[0]?.finishReason ?? "unknown";
-    throw new Error(`Gemini returned no text (finishReason: ${finish})`);
+    console.error(`[llm] Gemini returned no text (finishReason: ${finish})`);
+    throw new AppError(502, "llm_no_output", "The AI service didn't return a result. Please try again.");
   }
 
   return text;

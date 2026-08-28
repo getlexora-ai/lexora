@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { askLLM } from "@/lib/llm";
 import { enforceRateLimit } from "@/lib/rate-limit";
+import { errorResponse } from "@/lib/errors";
 
 export async function POST(req: NextRequest) {
   try {
@@ -41,7 +42,6 @@ Write a NEW replacement clause that incorporates the user's request. Return ONLY
 
     return NextResponse.json({ refined: refined.trim() });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return errorResponse(err, "refine");
   }
 }

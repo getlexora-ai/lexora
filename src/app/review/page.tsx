@@ -459,7 +459,7 @@ function ReviewContent() {
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.clause) {
-          setComputeError(data.error ?? "Could not add the issue. Please try again.");
+          setComputeError(data.message ?? "Couldn't add the issue. Please try again.");
           return;
         }
         const c = data.clause as {
@@ -514,6 +514,10 @@ function ReviewContent() {
       });
       const data = await res.json();
       if (rateLimitNote(res, data)) return;
+      if (!res.ok) {
+        setComputeError(data.message ?? "Couldn't refine that clause. Please try again.");
+        return;
+      }
       if (data.refined) {
         // Save refinement record to Supabase
         if (contractId) {
@@ -578,7 +582,9 @@ function ReviewContent() {
           }),
         });
         const data = await res.json();
-        answer = rateLimitNote(res, data) ?? data.explanation ?? data.error ?? "Contract updated.";
+        answer = rateLimitNote(res, data)
+          ?? (res.ok ? (data.explanation ?? "Contract updated.")
+                     : (data.message ?? "The assistant hit an error. Please try again."));
         if (data.updatedDocument && quillRef.current) {
           quillRef.current.setText(data.updatedDocument);
           quillRef.current.history.clear();
@@ -602,7 +608,9 @@ function ReviewContent() {
           }),
         });
         const data = await res.json();
-        answer = rateLimitNote(res, data) ?? data.answer ?? data.error ?? "No response.";
+        answer = rateLimitNote(res, data)
+          ?? (res.ok ? (data.answer ?? "No response.")
+                     : (data.message ?? "The assistant hit an error. Please try again."));
       }
 
       setChatHistory(prev => [...prev, { role: "assistant", content: answer }]);
@@ -624,6 +632,10 @@ function ReviewContent() {
       });
       const data = await res.json();
       if (rateLimitNote(res, data)) return;
+      if (!res.ok) {
+        setComputeError(data.message ?? "Couldn't re-run the analysis. Please try again.");
+        return;
+      }
       if (data.clauses) {
         setClauses(data.clauses);
         setFixedCount(0);
@@ -650,6 +662,10 @@ function ReviewContent() {
       });
       const data = await res.json();
       if (rateLimitNote(res, data)) return;
+      if (!res.ok) {
+        setComputeError(data.message ?? "Couldn't refine that selection. Please try again.");
+        return;
+      }
       if (data.refined) {
         const quill = quillRef.current;
         const text  = quill?.getText() ?? "";

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { askLLM } from "@/lib/llm";
 import { enforceRateLimit } from "@/lib/rate-limit";
+import { errorResponse } from "@/lib/errors";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -29,7 +30,6 @@ ${contractText.slice(0, 20000)}`;
 
     return NextResponse.json({ answer });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return errorResponse(err, "chat");
   }
 }

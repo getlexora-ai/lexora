@@ -58,7 +58,7 @@ async function assertOk(res: Response, fallback: string, onRateLimit: () => void
       `You've hit the ${body.scope === "guest" ? "guest " : ""}usage limit for this action. Try again in about ${mins} minute${mins === 1 ? "" : "s"}.`,
     );
   }
-  throw new Error((body.error as string) ?? fallback);
+  throw new Error((body.message as string) ?? fallback);
 }
 
 function AnalysisContent() {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { analyseContract } from "@/lib/analysis";
 import { enforceRateLimit } from "@/lib/rate-limit";
+import { errorResponse } from "@/lib/errors";
 import { RiskClause } from "@/lib/analysis-store";
 
 export async function POST(req: NextRequest) {
@@ -20,7 +21,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ clauses });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return errorResponse(err, "analyse");
   }
 }

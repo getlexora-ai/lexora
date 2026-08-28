@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { enforceRateLimit } from "@/lib/rate-limit";
+import { errorResponse } from "@/lib/errors";
+
+const EXTRACT_FAILED = "We couldn't read text from that file. Try a different file or try again.";
 
 export const maxDuration = 120;
 
@@ -75,7 +78,7 @@ export async function POST(req: NextRequest) {
       // Synchronous result — extraction is in the body directly
       const data = await submitRes.json();
       const text = data?.extraction?.result_text ?? "";
-      if (!text) return NextResponse.json({ error: "No text extracted", raw: data }, { status: 422 });
+      if (!text) return NextResponse.json({ error: "no_text", message: EXTRACT_FAILED }, { status: 422 });
       return NextResponse.json({ text, file_path: filePath });
     }
 
@@ -84,22 +87,19 @@ export async function POST(req: NextRequest) {
       const data = await submitRes.json();
       const whisperHash = data?.whisper_hash;
       if (!whisperHash) {
-        return NextResponse.json({ error: "No whisper_hash in 202 response", raw: data }, { status: 502 });
+        console.error("[extract] no whisper_hash in 202 response:", JSON.stringify(data));
+        return NextResponse.json({ error: "upstream_error", message: EXTRACT_FAILED }, { status: 502 });
       }
       const text = await pollUntilProcessed(whisperHash);
-      if (!text) return NextResponse.json({ error: "No text extracted after polling" }, { status: 422 });
+      if (!text) return NextResponse.json({ error: "no_text", message: EXTRACT_FAILED }, { status: 422 });
       return NextResponse.json({ text, file_path: filePath });
     }
 
     // Any other status = error
-    const errText = await submitRes.text();
-    return NextResponse.json(
-      { error: `LLMWhisperer submit failed (${submitRes.status}): ${errText}` },
-      { status: 502 },
-    );
+    console.error(`[extract] LLMWhisperer submit failed (${submitRes.status}): ${await submitRes.text()}`);
+    return NextResponse.json({ error: "upstream_error", message: EXTRACT_FAILED }, { status: 502 });
 
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return errorResponse(err, "extract");
   }
 }

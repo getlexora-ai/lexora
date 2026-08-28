@@ -1,38 +1,42 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { query, queryOne } from "@/lib/db";
+import { DEMO_USER_ID } from "@/lib/user";
 
 type Params = { params: Promise<{ id: string }> };
 
 // GET /api/contracts/[id] — fetch contract + its clauses
 export async function GET(_req: NextRequest, { params }: Params) {
   const { id } = await params;
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
 
-  const { data: contract, error } = await supabase
-    .from("contracts")
-    .select(`
-      id, name, contract_type, extracted_text, quill_delta,
-      risk_level, total_issues, issues_fixed, created_at,
-      risk_clauses (
-        id, type, clause, passage, issue, suggestion,
-        refined_suggestion, status, sort_order, replaced_at
-      )
-    `)
-    .eq("id", id)
-    .single();
+  try {
+    const contract = await queryOne(
+      `select id, name, contract_type, extracted_text, quill_delta,
+              risk_level, total_issues, issues_fixed, created_at
+         from contracts
+        where id = $1`,
+      [id],
+    );
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 404 });
-  return NextResponse.json({ contract });
+    if (!contract) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    const risk_clauses = await query(
+      `select id, type, clause, passage, issue, suggestion,
+              refined_suggestion, status, sort_order, replaced_at
+         from risk_clauses
+        where contract_id = $1
+        order by sort_order`,
+      [id],
+    );
+
+    return NextResponse.json({ contract: { ...contract, risk_clauses } });
+  } catch (err) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+  }
 }
 
 // PATCH /api/contracts/[id] — update name, quill_delta, issues_fixed
 export async function PATCH(req: NextRequest, { params }: Params) {
   const { id } = await params;
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
 
   const body = await req.json() as {
     name?: string;
@@ -40,46 +44,44 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     issues_fixed?: number;
   };
 
-  const updates: Record<string, unknown> = {};
-  if (body.name         !== undefined) updates.name         = body.name;
-  if (body.quill_delta  !== undefined) updates.quill_delta  = body.quill_delta;
-  if (body.issues_fixed !== undefined) updates.issues_fixed = body.issues_fixed;
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  const add = (col: string, val: unknown) => {
+    values.push(val);
+    sets.push(`${col} = $${values.length}`);
+  };
 
-  const { error } = await supabase
-    .from("contracts")
-    .update(updates)
-    .eq("id", id)
-    .eq("user_id", user.id);
+  if (body.name         !== undefined) add("name", body.name);
+  if (body.quill_delta  !== undefined) add("quill_delta", JSON.stringify(body.quill_delta));
+  if (body.issues_fixed !== undefined) add("issues_fixed", body.issues_fixed);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
+  if (sets.length === 0) return NextResponse.json({ ok: true });
+
+  values.push(id, DEMO_USER_ID);
+
+  try {
+    await query(
+      `update contracts set ${sets.join(", ")}
+        where id = $${values.length - 1} and user_id = $${values.length}`,
+      values,
+    );
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+  }
 }
 
 // DELETE /api/contracts/[id] — hard delete
 export async function DELETE(_req: NextRequest, { params }: Params) {
   const { id } = await params;
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
 
-  // Also delete the stored file from Storage if one exists
-  const { data: contract } = await supabase
-    .from("contracts")
-    .select("file_path")
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .single();
-
-  if (contract?.file_path) {
-    await supabase.storage.from("contract_files").remove([contract.file_path]);
+  try {
+    await query(
+      `delete from contracts where id = $1 and user_id = $2`,
+      [id, DEMO_USER_ID],
+    );
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
   }
-
-  const { error } = await supabase
-    .from("contracts")
-    .delete()
-    .eq("id", id)
-    .eq("user_id", user.id);
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
 }

@@ -1,7 +1,5 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
-
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+import { askLLM } from "@/lib/llm";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -19,27 +17,13 @@ export async function POST(req: NextRequest) {
 CONTRACT:
 ${contractText.slice(0, 20000)}`;
 
-    const messages: Anthropic.MessageParam[] = [
-      ...(history ?? []).map(m => ({
-        role: m.role as "user" | "assistant",
-        content: m.content,
-      })),
-      { role: "user", content: question },
-    ];
-
-    const message = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 1024,
+    const answer = await askLLM({
       system: systemPrompt,
-      messages,
+      messages: [...(history ?? []), { role: "user", content: question }],
+      maxTokens: 2048,
     });
 
-    const content = message.content[0];
-    if (content.type !== "text") {
-      return NextResponse.json({ error: "Unexpected response type" }, { status: 500 });
-    }
-
-    return NextResponse.json({ answer: content.text.trim() });
+    return NextResponse.json({ answer });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });

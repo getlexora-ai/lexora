@@ -1,9 +1,7 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { askLLM } from "@/lib/llm";
+import { query } from "@/lib/db";
 import { RiskClause } from "@/lib/analysis-store";
-
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const REVIEW_PROMPT = `You are a senior commercial contracts attorney. Review the contract below and identify 5-8 risky or non-standard clauses.
 
@@ -38,26 +36,22 @@ type Params = { params: Promise<{ id: string }> };
 // POST /api/contracts/[id]/reanalyse — re-run AI analysis on current document text
 export async function POST(req: NextRequest, { params }: Params) {
   const { id } = await params;
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
 
   const { text } = await req.json() as { text: string };
   if (!text?.trim()) return NextResponse.json({ error: "No text provided" }, { status: 400 });
 
   // Run AI analysis
-  const message = await client.messages.create({
-    model: "claude-haiku-4-5-20251001",
-    max_tokens: 4096,
-    messages: [{ role: "user", content: REVIEW_PROMPT + text.slice(0, 20000) }],
-  });
-
-  const content = message.content[0];
-  if (content.type !== "text") {
-    return NextResponse.json({ error: "Unexpected Claude response type" }, { status: 500 });
+  let responseText: string;
+  try {
+    responseText = await askLLM({
+      maxTokens: 8192,
+      prompt: REVIEW_PROMPT + text.slice(0, 20000),
+    });
+  } catch (err) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
   }
 
-  const raw = content.text
+  const raw = responseText
     .trim()
     .replace(/^```json\s*/i, "")
     .replace(/\s*```$/i, "");
@@ -71,39 +65,49 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const issues = parsed.issues ?? [];
 
-  // Delete all existing pending clauses for this contract
-  await supabase
-    .from("risk_clauses")
-    .delete()
-    .eq("contract_id", id)
-    .eq("status", "pending");
+  let inserted: Array<{
+    id: string; type: string; clause: string; passage: string;
+    issue: string; suggestion: string; sort_order: number;
+  }> = [];
 
-  // Insert new clauses
-  const rows = issues.map((c, i) => ({
-    contract_id: id,
-    type: c.type,
-    clause: c.clause,
-    passage: c.passage,
-    issue: c.issue,
-    suggestion: c.suggestion,
-    sort_order: i,
-    status: "pending" as const,
-  }));
+  try {
+    // Delete all existing pending clauses for this contract
+    await query(
+      `delete from risk_clauses where contract_id = $1 and status = 'pending'`,
+      [id],
+    );
 
-  const { data: inserted, error: insertError } = await supabase
-    .from("risk_clauses")
-    .insert(rows)
-    .select("id, type, clause, passage, issue, suggestion, sort_order");
+    // Insert new clauses
+    if (issues.length > 0) {
+      const rows: string[] = [];
+      const values: unknown[] = [];
+      issues.forEach((c, i) => {
+        const b = i * 8;
+        rows.push(
+          `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6}, $${b + 7}, $${b + 8})`,
+        );
+        values.push(id, c.type, c.clause, c.passage, c.issue, c.suggestion, i, "pending");
+      });
 
-  if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
+      inserted = await query(
+        `insert into risk_clauses
+           (contract_id, type, clause, passage, issue, suggestion, sort_order, status)
+         values ${rows.join(", ")}
+         returning id, type, clause, passage, issue, suggestion, sort_order`,
+        values,
+      );
+    }
 
-  // Update total_issues on the contract
-  await supabase
-    .from("contracts")
-    .update({ total_issues: issues.length, issues_fixed: 0 })
-    .eq("id", id);
+    // Update total_issues on the contract
+    await query(
+      `update contracts set total_issues = $1, issues_fixed = 0 where id = $2`,
+      [issues.length, id],
+    );
+  } catch (err) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+  }
 
-  const clauses: RiskClause[] = (inserted ?? [])
+  const clauses: RiskClause[] = inserted
     .sort((a, b) => a.sort_order - b.sort_order)
     .map(c => ({
       id: c.id,

@@ -1,8 +1,6 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
+import { askLLM } from "@/lib/llm";
 import { RiskClause } from "@/lib/analysis-store";
-
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // Matches the REVIEW_PROMPT in server.py exactly
 const REVIEW_PROMPT = `You are a senior commercial contracts attorney. Review the contract below and identify 5-8 risky or non-standard clauses.
@@ -38,19 +36,13 @@ export async function POST(req: NextRequest) {
     const { text } = await req.json() as { text: string };
     if (!text) return NextResponse.json({ error: "No text provided" }, { status: 400 });
 
-    const message = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 4096,
-      messages: [{ role: "user", content: REVIEW_PROMPT + text.slice(0, 20000) }],
+    const responseText = await askLLM({
+      maxTokens: 8192,
+      prompt: REVIEW_PROMPT + text.slice(0, 20000),
     });
 
-    const content = message.content[0];
-    if (content.type !== "text") {
-      return NextResponse.json({ error: "Unexpected Claude response type" }, { status: 500 });
-    }
-
     // Strip markdown fences if present
-    const raw = content.text
+    const raw = responseText
       .trim()
       .replace(/^```json\s*/i, "")
       .replace(/\s*```$/i, "");
@@ -59,7 +51,7 @@ export async function POST(req: NextRequest) {
     try {
       parsed = JSON.parse(raw);
     } catch {
-      return NextResponse.json({ error: "Failed to parse Claude response", raw }, { status: 500 });
+      return NextResponse.json({ error: "Failed to parse model response", raw }, { status: 500 });
     }
 
     const clauses: RiskClause[] = (parsed.issues ?? []).map((c, i) => ({

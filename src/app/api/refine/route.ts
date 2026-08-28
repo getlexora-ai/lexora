@@ -1,7 +1,5 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
-
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+import { askLLM } from "@/lib/llm";
 
 export async function POST(req: NextRequest) {
   try {
@@ -35,18 +33,9 @@ ${contractText.slice(0, 8000)}
 
 Write a NEW replacement clause that incorporates the user's request. Return ONLY the replacement clause text — no explanation, no preamble, no quotes. Write it in formal legal language, ready to insert verbatim into the contract.`;
 
-    const message = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 1024,
-      messages: [{ role: "user", content: prompt }],
-    });
+    const refined = await askLLM({ prompt, maxTokens: 2048 });
 
-    const content = message.content[0];
-    if (content.type !== "text") {
-      return NextResponse.json({ error: "Unexpected response type" }, { status: 500 });
-    }
-
-    return NextResponse.json({ refined: content.text.trim() });
+    return NextResponse.json({ refined: refined.trim() });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });

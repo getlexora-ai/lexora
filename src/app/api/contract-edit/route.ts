@@ -1,7 +1,5 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
-
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+import { askLLM } from "@/lib/llm";
 
 export async function POST(req: NextRequest) {
   try {
@@ -27,26 +25,15 @@ Format your response exactly like this:
 Current contract:
 ${currentDocument}`;
 
-    const messages = [
-      ...history.map(m => ({ role: m.role as "user" | "assistant", content: m.content })),
-      { role: "user" as const, content: instruction },
-    ];
-
-    const message = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 8192,
+    const text = await askLLM({
       system: systemPrompt,
-      messages,
+      messages: [...(history ?? []), { role: "user", content: instruction }],
+      maxTokens: 8192,
     });
 
-    const content = message.content[0];
-    if (content.type !== "text") {
-      return NextResponse.json({ error: "Unexpected response type" }, { status: 500 });
-    }
-
     // Split on the explanation separator
-    const parts     = content.text.split("---EXPLANATION---");
-    const updatedDoc = parts[0].trim();
+    const parts       = text.split("---EXPLANATION---");
+    const updatedDoc  = parts[0].trim();
     const explanation = parts[1]?.trim() ?? "Contract updated.";
 
     return NextResponse.json({ updatedDocument: updatedDoc, explanation });

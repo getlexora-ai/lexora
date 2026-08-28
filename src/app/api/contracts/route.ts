@@ -1,28 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { query, queryOne } from "@/lib/db";
+import { DEMO_USER_ID } from "@/lib/user";
 
-// GET /api/contracts — list all contracts for the logged-in user
+// GET /api/contracts — list all contracts in the shared workspace
 export async function GET() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
-
-  const { data, error } = await supabase
-    .from("contracts")
-    .select("id, name, contract_type, risk_level, total_issues, issues_fixed, created_at")
-    .order("created_at", { ascending: false });
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ contracts: data });
+  try {
+    const contracts = await query(
+      `select id, name, contract_type, risk_level, total_issues, issues_fixed, created_at
+         from contracts
+        where user_id = $1
+        order by created_at desc`,
+      [DEMO_USER_ID],
+    );
+    return NextResponse.json({ contracts });
+  } catch (err) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+  }
 }
 
 // POST /api/contracts — create contract + bulk insert clauses after analysis
 export async function POST(req: NextRequest) {
-  const supabase = await createClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  console.log("[POST /api/contracts] user:", user?.id ?? null, "authError:", authError?.message ?? null);
-  if (!user) return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
-
   const body = await req.json() as {
     name: string;
     contract_type: string;
@@ -39,47 +36,56 @@ export async function POST(req: NextRequest) {
     }>;
   };
 
-  // Insert contract row
-  const { data: contract, error: contractError } = await supabase
-    .from("contracts")
-    .insert({
-      user_id: user.id,
-      name: body.name,
-      contract_type: body.contract_type,
-      extracted_text: body.extracted_text,
-      file_path: body.file_path ?? null,
-      risk_level: body.risk_level,
-      total_issues: body.clauses.length,
-      issues_fixed: 0,
-    })
-    .select("id")
-    .single();
+  try {
+    // Insert contract row
+    const contract = await queryOne<{ id: string }>(
+      `insert into contracts
+         (user_id, name, contract_type, extracted_text, file_path, risk_level, total_issues, issues_fixed)
+       values ($1, $2, $3, $4, $5, $6, $7, 0)
+       returning id`,
+      [
+        DEMO_USER_ID,
+        body.name,
+        body.contract_type,
+        body.extracted_text,
+        body.file_path ?? null,
+        body.risk_level,
+        body.clauses.length,
+      ],
+    );
 
-  console.log("[POST /api/contracts] insert result:", contract, "error:", contractError?.message ?? null);
-  if (contractError) return NextResponse.json({ error: contractError.message }, { status: 500 });
+    if (!contract) {
+      return NextResponse.json({ error: "Failed to create contract" }, { status: 500 });
+    }
 
-  // Bulk insert clauses
-  if (body.clauses.length > 0) {
-    const rows = body.clauses.map(c => ({
-      contract_id: contract.id,
-      type: c.type,
-      clause: c.clause,
-      passage: c.passage,
-      issue: c.issue,
-      suggestion: c.suggestion,
-      sort_order: c.sort_order,
-      status: "pending" as const,
-    }));
+    // Bulk insert clauses
+    if (body.clauses.length > 0) {
+      const values: string[] = [];
+      const params: unknown[] = [];
+      body.clauses.forEach((c, i) => {
+        const b = i * 8;
+        values.push(
+          `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6}, $${b + 7}, $${b + 8})`,
+        );
+        params.push(
+          contract.id, c.type, c.clause, c.passage, c.issue, c.suggestion, c.sort_order, "pending",
+        );
+      });
 
-    const { data: insertedClauses, error: clausesError } = await supabase
-      .from("risk_clauses")
-      .insert(rows)
-      .select("id, sort_order");
-    if (clausesError) return NextResponse.json({ error: clausesError.message }, { status: 500 });
+      const inserted = await query<{ id: string; sort_order: number }>(
+        `insert into risk_clauses
+           (contract_id, type, clause, passage, issue, suggestion, sort_order, status)
+         values ${values.join(", ")}
+         returning id, sort_order`,
+        params,
+      );
 
-    const sortedClauses = (insertedClauses ?? []).sort((a, b) => a.sort_order - b.sort_order);
-    return NextResponse.json({ id: contract.id, clauses: sortedClauses }, { status: 201 });
+      const clauses = inserted.sort((a, b) => a.sort_order - b.sort_order);
+      return NextResponse.json({ id: contract.id, clauses }, { status: 201 });
+    }
+
+    return NextResponse.json({ id: contract.id, clauses: [] }, { status: 201 });
+  } catch (err) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
   }
-
-  return NextResponse.json({ id: contract.id, clauses: [] }, { status: 201 });
 }

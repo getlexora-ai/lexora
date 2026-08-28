@@ -1,43 +1,45 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { query, queryOne } from "@/lib/db";
+import { DEMO_USER_ID } from "@/lib/user";
 
 type Params = { params: Promise<{ id: string }> };
 
 // GET /api/contracts/[id]/versions — list version snapshots
 export async function GET(_req: NextRequest, { params }: Params) {
   const { id } = await params;
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
 
-  const { data, error } = await supabase
-    .from("contract_versions")
-    .select("id, snapshot_reason, created_at")
-    .eq("contract_id", id)
-    .order("created_at", { ascending: false });
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ versions: data });
+  try {
+    const versions = await query(
+      `select id, snapshot_reason, created_at
+         from contract_versions
+        where contract_id = $1
+        order by created_at desc`,
+      [id],
+    );
+    return NextResponse.json({ versions });
+  } catch (err) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+  }
 }
 
 // POST /api/contracts/[id]/versions — save a snapshot of the current delta
 export async function POST(req: NextRequest, { params }: Params) {
   const { id } = await params;
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
 
   const { quill_delta, snapshot_reason } = await req.json() as {
     quill_delta: object;
     snapshot_reason?: string;
   };
 
-  const { data, error } = await supabase
-    .from("contract_versions")
-    .insert({ contract_id: id, quill_delta, snapshot_reason, created_by: user.id })
-    .select("id")
-    .single();
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ id: data.id }, { status: 201 });
+  try {
+    const row = await queryOne<{ id: string }>(
+      `insert into contract_versions (contract_id, quill_delta, snapshot_reason, created_by)
+       values ($1, $2, $3, $4)
+       returning id`,
+      [id, JSON.stringify(quill_delta), snapshot_reason ?? null, DEMO_USER_ID],
+    );
+    return NextResponse.json({ id: row?.id }, { status: 201 });
+  } catch (err) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+  }
 }

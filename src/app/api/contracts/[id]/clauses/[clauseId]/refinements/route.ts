@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { query } from "@/lib/db";
 
 type Params = { params: Promise<{ clauseId: string }> };
 
@@ -7,9 +7,6 @@ type Params = { params: Promise<{ clauseId: string }> };
 // Saves a refinement attempt (user note + Claude output) to clause_refinements table
 export async function POST(req: NextRequest, { params }: Params) {
   const { clauseId } = await params;
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
 
   const body = await req.json() as {
     user_note: string;
@@ -21,15 +18,14 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "user_note and refined_output are required" }, { status: 400 });
   }
 
-  const { error } = await supabase
-    .from("clause_refinements")
-    .insert({
-      clause_id:      clauseId,
-      user_note:      body.user_note,
-      refined_output: body.refined_output,
-      was_applied:    body.was_applied ?? false,
-    });
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true }, { status: 201 });
+  try {
+    await query(
+      `insert into clause_refinements (clause_id, user_note, refined_output, was_applied)
+       values ($1, $2, $3, $4)`,
+      [clauseId, body.user_note, body.refined_output, body.was_applied ?? false],
+    );
+    return NextResponse.json({ ok: true }, { status: 201 });
+  } catch (err) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+  }
 }

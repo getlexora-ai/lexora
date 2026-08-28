@@ -63,17 +63,11 @@ export default function LandingPage() {
         </p>
         <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
           <Link
-            href="/signup"
+            href="/dashboard"
             className="inline-flex items-center gap-2 rounded-md bg-primary px-8 py-2.5 text-base font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors"
           >
-            Get started free
+            Open dashboard
             <ArrowRight className="h-4 w-4" />
-          </Link>
-          <Link
-            href="/login"
-            className="inline-flex items-center rounded-md border border-border px-8 py-2.5 text-base font-medium hover:bg-muted transition-colors"
-          >
-            Sign in
           </Link>
         </div>
       </section>
@@ -127,10 +121,10 @@ export default function LandingPage() {
           No credit card required. Upload your first contract in under a minute.
         </p>
         <Link
-          href="/signup"
+          href="/dashboard"
           className="mt-8 inline-flex items-center gap-2 rounded-md bg-primary px-10 py-2.5 text-base font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors"
         >
-          Create free account
+          Open dashboard
           <ArrowRight className="h-4 w-4" />
         </Link>
       </section>

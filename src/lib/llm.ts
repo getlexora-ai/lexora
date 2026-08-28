@@ -27,6 +27,12 @@ type AskArgs = {
   maxTokens: number;
   /** Defaults to FLASH. */
   model?: string;
+  /**
+   * When set, Gemini is forced to return a JSON string matching this schema
+   * (structured output) — no prose, no ``` fences, always parseable.
+   * Use a Gemini/OpenAPI-style schema object.
+   */
+  responseSchema?: Record<string, unknown>;
 };
 
 export async function askLLM({
@@ -35,6 +41,7 @@ export async function askLLM({
   messages,
   maxTokens,
   model = FLASH,
+  responseSchema,
 }: AskArgs): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY is not set");
@@ -54,6 +61,9 @@ export async function askLLM({
       // the overhead small; `thinkingBudget: 0` is rejected on 3.x.
       thinkingConfig: { thinkingLevel: "low" },
       maxOutputTokens: maxTokens,
+      ...(responseSchema
+        ? { responseMimeType: "application/json", responseSchema }
+        : {}),
     },
   };
   if (system) body.systemInstruction = { parts: [{ text: system }] };

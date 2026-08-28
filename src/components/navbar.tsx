@@ -23,7 +23,7 @@ export function Navbar() {
           {BARE_PAGES.includes(pathname) && (
             <Link
               href="/dashboard"
-              className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/85"
             >
               Go to dashboard
             </Link>
@@ -33,12 +33,12 @@ export function Navbar() {
       ) : (
         <>
           <SignInButton mode="modal">
-            <button className="rounded-md px-4 py-1.5 text-sm font-medium transition-colors hover:bg-muted">
+            <button className="rounded-lg px-3.5 py-2 text-sm font-medium text-foreground/80 transition-colors hover:bg-accent hover:text-foreground">
               Sign in
             </button>
           </SignInButton>
           <SignUpButton mode="modal">
-            <button className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">
+            <button className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/85">
               Sign up
             </button>
           </SignUpButton>
@@ -50,10 +50,10 @@ export function Navbar() {
   // Landing page — minimal bar
   if (BARE_PAGES.includes(pathname)) {
     return (
-      <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
+      <header className="sticky top-0 z-50 border-b border-border/70 bg-background/85 backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
           <Link href="/" className="flex items-center">
-            <Image src="/logo.svg" alt="Lexora" width={100} height={32} priority />
+            <Image src="/logo.svg" alt="Lexora" width={104} height={33} priority />
           </Link>
           {authControls}
         </div>
@@ -63,10 +63,10 @@ export function Navbar() {
 
   // App pages — full navbar
   return (
-    <header className="sticky top-0 z-50 border-b bg-background">
+    <header className="sticky top-0 z-50 border-b border-border bg-background">
       <div className="mx-auto flex h-16 max-w-[1600px] items-center justify-between px-8">
         <Link href="/dashboard" className="flex items-center">
-          <Image src="/logo.svg" alt="Lexora" width={100} height={32} priority />
+          <Image src="/logo.svg" alt="Lexora" width={104} height={33} priority />
         </Link>
         {authControls}
       </div>

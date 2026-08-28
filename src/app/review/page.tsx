@@ -126,6 +126,17 @@ function ReviewContent() {
   const [selectionRefineNote, setSelectionRefineNote] = useState("");
   const [selectionRefineLoading, setSelectionRefineLoading] = useState(false);
 
+  // Set by any compute route returning 429; shown as a transient toast.
+  const [computeError, setComputeError] = useState<string | null>(null);
+  // Returns the message when `res` is a 429 (and shows the toast), else null.
+  function rateLimitNote(res: Response, data: { retry_after?: number; scope?: string }): string | null {
+    if (res.status !== 429) return null;
+    const mins = Math.max(1, Math.round((Number(data.retry_after) || 3600) / 60));
+    const msg = `Usage limit reached${data.scope === "guest" ? " — sign in for higher limits" : ""}. Try again in about ${mins} min.`;
+    setComputeError(msg);
+    return msg;
+  }
+
   // On mount: fetch from Supabase when contractId is present.
   // This is the source of truth for re-opens — gives us only pending clauses,
   // the latest quill_delta (with green fix highlights), and the real issues_fixed count.
@@ -401,6 +412,7 @@ function ReviewContent() {
         }),
       });
       const data = await res.json();
+      if (rateLimitNote(res, data)) return;
       if (data.refined) {
         // Save refinement record to Supabase
         if (contractId) {
@@ -465,7 +477,7 @@ function ReviewContent() {
           }),
         });
         const data = await res.json();
-        answer = data.explanation ?? data.error ?? "Contract updated.";
+        answer = rateLimitNote(res, data) ?? data.explanation ?? data.error ?? "Contract updated.";
         if (data.updatedDocument && quillRef.current) {
           quillRef.current.setText(data.updatedDocument);
           quillRef.current.history.clear();
@@ -489,7 +501,7 @@ function ReviewContent() {
           }),
         });
         const data = await res.json();
-        answer = data.answer ?? data.error ?? "No response.";
+        answer = rateLimitNote(res, data) ?? data.answer ?? data.error ?? "No response.";
       }
 
       setChatHistory(prev => [...prev, { role: "assistant", content: answer }]);
@@ -510,6 +522,7 @@ function ReviewContent() {
         body: JSON.stringify({ text: liveText() }),
       });
       const data = await res.json();
+      if (rateLimitNote(res, data)) return;
       if (data.clauses) {
         setClauses(data.clauses);
         setFixedCount(0);
@@ -535,6 +548,7 @@ function ReviewContent() {
         }),
       });
       const data = await res.json();
+      if (rateLimitNote(res, data)) return;
       if (data.refined) {
         const quill = quillRef.current;
         const text  = quill?.getText() ?? "";
@@ -553,6 +567,13 @@ function ReviewContent() {
     }
   }
 
+  // Auto-dismiss the rate-limit toast.
+  useEffect(() => {
+    if (!computeError) return;
+    const t = setTimeout(() => setComputeError(null), 7000);
+    return () => clearTimeout(t);
+  }, [computeError]);
+
   // noData only when there's no in-memory/localStorage result AND no contractId to fetch from Supabase
   const noData = !result && !contractId;
   const activeClause = clauses.find(c => c.id === activeCardId);
@@ -561,6 +582,11 @@ function ReviewContent() {
     // h-[calc(100vh-4rem)]: full viewport minus the 64px Navbar above
     // overflow-hidden: prevents page-level scroll so inner panels scroll independently
     <div className="flex flex-col h-[calc(100vh-4rem)] overflow-hidden">
+      {computeError && (
+        <div className="fixed bottom-5 right-5 z-50 max-w-sm rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-lg">
+          {computeError}
+        </div>
+      )}
       {/* Sub-header */}
       <header className="shrink-0 border-b bg-background/80">
         <div className="flex h-14 items-center justify-between px-6">

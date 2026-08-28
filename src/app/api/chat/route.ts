@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { askLLM } from "@/lib/llm";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 type Message = { role: "user" | "assistant"; content: string };
 
 export async function POST(req: NextRequest) {
   try {
+    const limited = await enforceRateLimit(req, "chat");
+    if (limited) return limited;
+
     const { question, contractText, history } =
       await req.json() as { question: string; contractText: string; history: Message[] };
 

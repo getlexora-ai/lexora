@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 export const maxDuration = 120;
 
@@ -43,6 +44,9 @@ async function pollUntilProcessed(whisperHash: string): Promise<string> {
 
 export async function POST(req: NextRequest) {
   try {
+    const limited = await enforceRateLimit(req, "extract");
+    if (limited) return limited;
+
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
     if (!file) return NextResponse.json({ error: "No file provided" }, { status: 400 });

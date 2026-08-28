@@ -267,6 +267,14 @@ function DashboardContent() {
                 body: JSON.stringify({ contractType, party1, party2, jurisdiction, keyTerms }),
               });
               const genData = await genRes.json();
+              if (genRes.status === 429) {
+                const mins = Math.max(1, Math.round((Number(genData.retry_after) || 3600) / 60));
+                setSeedError(
+                  `Generation limit reached${genData.scope === "guest" ? " (sign in for higher limits)" : ""}. Try again in about ${mins} min.`,
+                );
+                setCreateOpen(false);
+                return;
+              }
               if (!genData.text) throw new Error(genData.error ?? "Generation failed");
 
               // Step 2: Save to Supabase so edits and chat are persisted

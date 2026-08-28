@@ -223,3 +223,27 @@ create table approval_decisions (
 
   created_at           timestamptz not null default now()
 );
+
+
+-- ============================================================
+-- rate_limits — per-key fixed-window counters for the paid
+-- "compute" API routes (see src/lib/rate-limit.ts).
+-- Also loadable standalone via db/003_rate_limits.sql.
+-- ============================================================
+create table rate_limits (
+  bucket_key   text not null,          -- "analyse:ip:1.2.3.4:h" | "analyse:u:user_2ab:d"
+  window_start timestamptz not null,   -- date_trunc('hour'|'day', now())
+  count        int not null default 0,
+  primary key (bucket_key, window_start)
+);
+
+-- Insert-only log, written only when a request is blocked. Powers the KPI.
+create table rate_limit_blocks (
+  id           bigint generated always as identity primary key,
+  route        text not null,
+  scope        text not null,          -- 'guest' | 'user'
+  bucket_key   text not null,
+  created_at   timestamptz not null default now()
+);
+
+create index rate_limit_blocks_created_idx on rate_limit_blocks (created_at desc);

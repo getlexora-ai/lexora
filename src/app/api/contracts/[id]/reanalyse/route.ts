@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { analyseContract } from "@/lib/analysis";
 import { query } from "@/lib/db";
 import { currentUserId, ownsContract, signInRequired } from "@/lib/auth";
+import { enforceRateLimit } from "@/lib/rate-limit";
 import { RiskClause } from "@/lib/analysis-store";
 
 type Params = { params: Promise<{ id: string }> };
@@ -14,6 +15,9 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!(await ownsContract(id, userId))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+
+  const limited = await enforceRateLimit(req, "reanalyse");
+  if (limited) return limited;
 
   const { text } = await req.json() as { text: string };
   if (!text?.trim()) return NextResponse.json({ error: "No text provided" }, { status: 400 });

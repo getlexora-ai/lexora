@@ -47,6 +47,20 @@ function sleep(ms: number) {
   return new Promise(r => setTimeout(r, ms));
 }
 
+// Throw a readable Error from a failed compute-route response; flags 429s.
+async function assertOk(res: Response, fallback: string, onRateLimit: () => void) {
+  if (res.ok) return;
+  const body = await res.json().catch(() => ({} as Record<string, unknown>));
+  if (res.status === 429) {
+    onRateLimit();
+    const mins = Math.max(1, Math.round((Number(body.retry_after) || 3600) / 60));
+    throw new Error(
+      `You've hit the ${body.scope === "guest" ? "guest " : ""}usage limit for this action. Try again in about ${mins} minute${mins === 1 ? "" : "s"}.`,
+    );
+  }
+  throw new Error((body.error as string) ?? fallback);
+}
+
 function AnalysisContent() {
   const router       = useRouter();
   const searchParams = useSearchParams();
@@ -59,6 +73,7 @@ function AnalysisContent() {
   const [progress, setProgress] = useState(0);
   const [done, setDone]         = useState(false);
   const [error, setError]       = useState<string | null>(null);
+  const [rateLimited, setRateLimited] = useState(false);
   const [contractId, setContractId] = useState<string | null>(null);
   // Set when the analysis finished but the save was rejected because the visitor
   // is signed out. Holds the payload so we can flush it once they sign in.
@@ -125,10 +140,7 @@ function AnalysisContent() {
         ]);
 
         if (cancelled) return;
-        if (!extractRes.ok) {
-          const err = await extractRes.json();
-          throw new Error(err.error ?? "Text extraction failed");
-        }
+        await assertOk(extractRes, "Text extraction failed", () => setRateLimited(true));
 
         const { text, file_path } = await extractRes.json();
         setStepStatus(0, "complete");
@@ -149,10 +161,7 @@ function AnalysisContent() {
         ]);
 
         if (cancelled) return;
-        if (!analyseRes.ok) {
-          const err = await analyseRes.json();
-          throw new Error(err.error ?? "AI analysis failed");
-        }
+        await assertOk(analyseRes, "AI analysis failed", () => setRateLimited(true));
 
         const { clauses } = await analyseRes.json();
         setStepStatus(1, "complete");
@@ -232,9 +241,16 @@ function AnalysisContent() {
             <div className="flex justify-center">
               <AlertCircle className="h-12 w-12 text-destructive" />
             </div>
-            <h2 className="text-xl font-bold">Analysis Failed</h2>
+            <h2 className="text-xl font-bold">{rateLimited ? "Usage limit reached" : "Analysis Failed"}</h2>
             <p className="text-sm text-muted-foreground">{error}</p>
-            <Button onClick={() => router.push("/dashboard")}>Back to Dashboard</Button>
+            {rateLimited && !isSignedIn && (
+              <SignInButton mode="modal">
+                <button className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90">
+                  Sign in for higher limits
+                </button>
+              </SignInButton>
+            )}
+            <Button variant={rateLimited && !isSignedIn ? "outline" : "default"} onClick={() => router.push("/dashboard")}>Back to Dashboard</Button>
           </div>
         </main>
       </div>

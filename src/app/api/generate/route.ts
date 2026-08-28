@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { askLLM } from "@/lib/llm";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 export async function POST(req: NextRequest) {
   try {
+    const limited = await enforceRateLimit(req, "generate");
+    if (limited) return limited;
+
     const { contractType, party1, party2, jurisdiction, keyTerms } =
       await req.json() as {
         contractType: string;

@@ -23,12 +23,13 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-// --- Colors ---
-const DOCS_COLOR   = "#6366f1"; // indigo
-const FIXES_COLOR  = "#10b981"; // emerald
-const HIGH_COLOR   = "#ef4444"; // red
-const MEDIUM_COLOR = "#f59e0b"; // amber
-const LOW_COLOR    = "#3b82f6"; // blue
+// --- Colors — Ink & Parchment tokens (light-mode values; charts render
+// server-agnostic SVG so these are literal oklch(), not var() indirection) ---
+const DOCS_COLOR   = "oklch(0.47 0.17 285)";   // brand / Iris
+const FIXES_COLOR  = "oklch(0.455 0.09 155)";  // risk-ok
+const HIGH_COLOR   = "oklch(0.475 0.185 25)";  // risk-high
+const MEDIUM_COLOR = "oklch(0.475 0.115 62)";  // risk-medium
+const LOW_COLOR    = "oklch(0.475 0.1 245)";   // risk-low
 
 // --- Types ---
 type DocEntry  = { month: string; docs: number };
@@ -56,8 +57,10 @@ const riskConfig  = {
 const axisProps = {
   tickLine: false,
   axisLine: false,
-  tick: { fontSize: 11, fill: "#94a3b8" },
+  tick: { fontSize: 11, fill: "oklch(0.46 0.012 70)" }, // muted-foreground
 } as const;
+
+const gridColor = "oklch(0.893 0.008 82)"; // border
 
 const DUMMY_CONTRACT = {
   name: "Master Service Agreement — Test Corp",
@@ -203,13 +206,13 @@ function DashboardContent() {
     <div className="px-8 py-10 space-y-8 max-w-[1200px]">
       {/* Guest banner — contracts can be analysed but not saved without an account */}
       {isLoaded && !isSignedIn && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-          <div className="flex items-center gap-2 text-sm text-amber-900">
-            <Lock className="h-4 w-4 shrink-0" />
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-risk-medium-line bg-risk-medium-soft px-4 py-3">
+          <div className="flex items-center gap-2 text-sm text-foreground">
+            <Lock className="h-4 w-4 shrink-0 text-risk-medium" />
             <span>You&apos;re browsing as a guest. You can analyse a contract, but saving requires an account.</span>
           </div>
           <SignInButton mode="modal">
-            <button className="rounded-md bg-amber-600 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-amber-700">
+            <button className="rounded-lg bg-risk-medium px-4 py-1.5 text-sm font-semibold text-background transition-opacity hover:opacity-90">
               Sign in
             </button>
           </SignInButton>
@@ -219,10 +222,10 @@ function DashboardContent() {
       {/* Header */}
       <section className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div className="space-y-1.5">
-          <h1 className="text-3xl font-bold tracking-tight">
+          <h1 className="text-2xl font-semibold tracking-tight">
             Contract Intelligence Overview
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             Monitoring legal health and compliance risk across your portfolio.
           </p>
         </div>
@@ -241,7 +244,7 @@ function DashboardContent() {
           </Button>
         </div>
         {seedError && (
-          <div className="w-full rounded-md border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700 break-all">
+          <div className="w-full rounded-lg border border-risk-high-line bg-risk-high-soft px-4 py-2 text-xs text-risk-high break-all">
             {seedError}
           </div>
         )}
@@ -327,10 +330,10 @@ function DashboardContent() {
         {/* 1 — Documents scanned */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
+            <CardTitle className="eyebrow">
               Documents Scanned
             </CardTitle>
-            <p className="text-3xl font-bold">{totalDocuments}</p>
+            <p className="text-3xl font-semibold tracking-tight" data-numeric>{totalDocuments}</p>
           </CardHeader>
           <CardContent>
             <ChartContainer config={docsConfig} className="h-[120px] w-full">
@@ -342,7 +345,7 @@ function DashboardContent() {
                       <stop offset="100%" stopColor={DOCS_COLOR} stopOpacity={0.5} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid vertical={false} stroke="#f1f5f9" />
+                  <CartesianGrid vertical={false} stroke={gridColor} />
                   <XAxis dataKey="month" {...axisProps} />
                   <ChartTooltip content={<ChartTooltipContent />} />
                   <Bar dataKey="docs" fill="url(#docsGrad)" radius={[5, 5, 0, 0]} />
@@ -355,10 +358,10 @@ function DashboardContent() {
         {/* 2 — Total legal fixes by AI */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
+            <CardTitle className="eyebrow">
               Total Legal Fixes by AI
             </CardTitle>
-            <p className="text-3xl font-bold">{totalFixes}</p>
+            <p className="text-3xl font-semibold tracking-tight" data-numeric>{totalFixes}</p>
           </CardHeader>
           <CardContent>
             <ChartContainer config={fixesConfig} className="h-[120px] w-full">
@@ -370,7 +373,7 @@ function DashboardContent() {
                       <stop offset="95%" stopColor={FIXES_COLOR} stopOpacity={0}    />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid vertical={false} stroke="#f1f5f9" />
+                  <CartesianGrid vertical={false} stroke={gridColor} />
                   <XAxis dataKey="month" {...axisProps} />
                   <ChartTooltip content={<ChartTooltipContent />} />
                   <Area
@@ -392,15 +395,15 @@ function DashboardContent() {
       <Card>
         <CardHeader className="pb-2 flex flex-row items-start justify-between">
           <div>
-            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
+            <CardTitle className="eyebrow">
               Risk Trends Over Time
             </CardTitle>
-            <p className="text-sm text-muted-foreground mt-1">
+            <p className="text-sm text-muted-foreground mt-1.5">
               High, medium, and low risk contracts — last 6 months
             </p>
           </div>
           {/* Manual legend */}
-          <div className="flex items-center gap-5 text-xs font-medium">
+          <div className="flex items-center gap-5 text-xs font-medium text-muted-foreground">
             {[
               { label: `High (${currentRisk.high})`,     color: HIGH_COLOR   },
               { label: `Medium (${currentRisk.medium})`, color: MEDIUM_COLOR },
@@ -417,7 +420,7 @@ function DashboardContent() {
           <ChartContainer config={riskConfig} className="h-[120px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={riskData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid vertical={false} stroke="#f1f5f9" />
+                <CartesianGrid vertical={false} stroke={gridColor} />
                 <XAxis dataKey="month" {...axisProps} />
                 <ChartTooltip content={<ChartTooltipContent />} />
                 <Line type="monotone" dataKey="high"   stroke={HIGH_COLOR}   strokeWidth={2} dot={{ r: 2.5, fill: HIGH_COLOR,   strokeWidth: 0 }} activeDot={{ r: 4 }} />
@@ -432,18 +435,18 @@ function DashboardContent() {
       {/* Contracts table */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base font-semibold">Saved Contracts</CardTitle>
+          <CardTitle>Saved Contracts</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="pl-6">Contract Name</TableHead>
-                <TableHead>Risk</TableHead>
-                <TableHead>Issues</TableHead>
-                <TableHead>Resolved</TableHead>
-                <TableHead>Saved</TableHead>
-                <TableHead className="pr-6 text-right">Actions</TableHead>
+                <TableHead className="pl-6 eyebrow text-muted-foreground">Contract Name</TableHead>
+                <TableHead className="eyebrow text-muted-foreground">Risk</TableHead>
+                <TableHead className="eyebrow text-muted-foreground">Issues</TableHead>
+                <TableHead className="eyebrow text-muted-foreground">Resolved</TableHead>
+                <TableHead className="eyebrow text-muted-foreground">Saved</TableHead>
+                <TableHead className="pr-6 text-right eyebrow text-muted-foreground">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -488,7 +491,7 @@ function DashboardContent() {
                   </TableCell>
                   <TableCell>
                     {(contract.issues_fixed + (contract.issues_dismissed ?? 0)) >= contract.total_issues && contract.total_issues > 0 ? (
-                      <Badge variant="outline" className="border-green-200 bg-green-50 text-green-700 hover:bg-green-50">
+                      <Badge variant="outline" className="border-risk-ok-line bg-risk-ok-soft text-risk-ok hover:bg-risk-ok-soft">
                         No Risk
                       </Badge>
                     ) : (
@@ -496,10 +499,10 @@ function DashboardContent() {
                         variant="outline"
                         className={
                           contract.risk_level === "high"
-                            ? "border-red-200 bg-red-50 text-red-700"
+                            ? "border-risk-high-line bg-risk-high-soft text-risk-high"
                             : contract.risk_level === "medium"
-                            ? "border-amber-200 bg-amber-50 text-amber-700"
-                            : "border-blue-200 bg-blue-50 text-blue-700"
+                            ? "border-risk-medium-line bg-risk-medium-soft text-risk-medium"
+                            : "border-risk-low-line bg-risk-low-soft text-risk-low"
                         }
                       >
                         {contract.risk_level ?? "—"}

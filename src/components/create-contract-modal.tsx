@@ -67,7 +67,7 @@ export function CreateContractModal({ open, onClose, onGenerate, generating }: P
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-primary" />
+            <Sparkles className="h-4 w-4 text-brand" />
             Generate Contract with AI
           </DialogTitle>
           <DialogDescription>
@@ -80,7 +80,7 @@ export function CreateContractModal({ open, onClose, onGenerate, generating }: P
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Contract Name</label>
             <input
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               placeholder="e.g. NDA — Acme Corp"
               value={name}
               onChange={e => setName(e.target.value)}
@@ -107,7 +107,7 @@ export function CreateContractModal({ open, onClose, onGenerate, generating }: P
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Party 1</label>
               <input
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                 placeholder="e.g. Acme Corp (Provider)"
                 value={party1}
                 onChange={e => setParty1(e.target.value)}
@@ -116,7 +116,7 @@ export function CreateContractModal({ open, onClose, onGenerate, generating }: P
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Party 2</label>
               <input
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                 placeholder="e.g. Global Ltd (Client)"
                 value={party2}
                 onChange={e => setParty2(e.target.value)}
@@ -143,7 +143,7 @@ export function CreateContractModal({ open, onClose, onGenerate, generating }: P
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Key Terms & Requirements <span className="text-muted-foreground font-normal">(optional)</span></label>
             <textarea
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none"
               rows={3}
               placeholder="e.g. 2-year term, auto-renewal, liability cap at £50k, UK law applies…"
               value={keyTerms}
@@ -155,7 +155,7 @@ export function CreateContractModal({ open, onClose, onGenerate, generating }: P
             <Button variant="outline" onClick={onClose} disabled={generating}>
               Cancel
             </Button>
-            <Button onClick={handleSubmit} disabled={!canGenerate || generating} className="gap-2">
+            <Button onClick={handleSubmit} disabled={!canGenerate || generating} className="gap-2 bg-brand text-brand-foreground hover:bg-brand/90">
               {generating ? (
                 <><Loader2 className="h-4 w-4 animate-spin" />Generating…</>
               ) : (

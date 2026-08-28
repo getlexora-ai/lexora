@@ -296,33 +296,33 @@ function AnalysisContent() {
 
           {/* Title block */}
           <div className="space-y-3">
-            <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-semibold text-primary">
+            <div className="inline-flex items-center gap-2 rounded-full border border-brand-line bg-brand-soft px-3 py-1 text-xs font-semibold text-brand">
               <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-brand" />
               </span>
               AI Analysis in Progress
             </div>
-            <h2 className="text-3xl font-bold tracking-tight">Reviewing contractual obligations…</h2>
+            <h2 className="display text-3xl">Reviewing contractual obligations…</h2>
             <p className="text-muted-foreground text-base">
               Our engine is extracting clauses and identifying potential risks based on your legal policy.
             </p>
           </div>
 
           {/* Progress card */}
-          <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
+          <div className="panel overflow-hidden">
 
             {/* Progress bar */}
-            <div className="border-b bg-muted/30 px-8 py-6">
+            <div className="border-b border-border bg-muted/30 px-8 py-6">
               <div className="flex items-end justify-between mb-3">
                 <div className="space-y-1">
-                  <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  <span className="eyebrow">
                     Overall Completion
                   </span>
-                  <p className="text-3xl font-bold">{progress}%</p>
+                  <p className="text-3xl font-semibold tracking-tight" data-numeric>{progress}%</p>
                 </div>
                 {done ? (
-                  <span className="rounded border border-green-100 bg-green-50 px-2 py-1 text-xs font-semibold text-green-700">
+                  <span className="rounded-full border border-risk-ok-line bg-risk-ok-soft px-2.5 py-1 text-xs font-semibold text-risk-ok">
                     Analysis Complete
                   </span>
                 ) : (
@@ -331,9 +331,9 @@ function AnalysisContent() {
                   </span>
                 )}
               </div>
-              <div className="h-3 w-full overflow-hidden rounded-full bg-secondary">
+              <div className="h-2.5 w-full overflow-hidden rounded-full bg-secondary">
                 <div
-                  className="h-full rounded-full bg-primary transition-all duration-700 ease-in-out"
+                  className="h-full rounded-full bg-brand transition-all duration-700 ease-in-out"
                   style={{ width: `${progress}%` }}
                 />
               </div>
@@ -386,19 +386,19 @@ function AnalysisContent() {
             )}
 
             {/* Footer */}
-            <div className="border-t bg-muted/30 px-8 py-4 flex items-center justify-between">
+            <div className="border-t border-border bg-muted/30 px-8 py-4 flex items-center justify-between">
               <p className="text-xs text-muted-foreground">
                 {completeCount} of {steps.length} steps complete
               </p>
               {done ? (
                 <Button
                   size="sm"
-                  className="gap-2"
+                  className="gap-2 bg-brand text-brand-foreground hover:bg-brand/90"
                   onClick={() => router.push(`/review?file=${encodeURIComponent(fileName)}&type=${encodeURIComponent(contractType)}${contractId ? `&contractId=${contractId}` : ""}`)}
                 >
                   <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary-foreground opacity-75" />
-                    <span className="relative inline-flex h-2 w-2 rounded-full bg-primary-foreground" />
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-foreground opacity-75" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-brand-foreground" />
                   </span>
                   Refine with AI
                 </Button>
@@ -430,16 +430,16 @@ export default function AnalysisPage() {
 function StepIcon({ status, index }: { status: StepStatus; index: number }) {
   if (status === "complete") {
     return (
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-green-200 bg-green-50">
-        <CheckCircle2 className="h-5 w-5 text-green-600" fill="currentColor" />
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-risk-ok-line bg-risk-ok-soft">
+        <CheckCircle2 className="h-5 w-5 text-risk-ok" fill="currentColor" />
       </div>
     );
   }
   if (status === "active") {
     return (
       <span className="relative flex h-9 w-9 shrink-0 items-center justify-center">
-        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-20" />
-        <span className="relative flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">
+        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand opacity-20" />
+        <span className="relative flex h-9 w-9 items-center justify-center rounded-full bg-brand text-brand-foreground text-xs font-bold">
           {index}
         </span>
       </span>
@@ -455,14 +455,14 @@ function StepIcon({ status, index }: { status: StepStatus; index: number }) {
 function StatusBadge({ status }: { status: StepStatus }) {
   if (status === "complete") {
     return (
-      <span className="rounded border border-green-100 bg-green-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-green-700">
+      <span className="rounded border border-risk-ok-line bg-risk-ok-soft px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-risk-ok">
         Complete
       </span>
     );
   }
   if (status === "active") {
     return (
-      <span className="rounded border border-sky-100 bg-sky-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-sky-700">
+      <span className="rounded border border-brand-line bg-brand-soft px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand">
         In Progress
       </span>
     );

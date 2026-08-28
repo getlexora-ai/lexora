@@ -11,21 +11,21 @@ type Risk = "high" | "medium" | "low";
 
 const RISK_STYLES: Record<Risk, { border: string; badge: string; title: string; label: string }> = {
   high: {
-    border: "border-l-red-500",
-    badge: "bg-red-50 border-red-100 text-red-700",
-    title: "text-red-700",
+    border: "border-l-risk-high",
+    badge: "bg-risk-high-soft border-risk-high-line text-risk-high",
+    title: "text-risk-high",
     label: "High Risk",
   },
   medium: {
-    border: "border-l-amber-500",
-    badge: "bg-amber-50 border-amber-100 text-amber-700",
-    title: "text-amber-700",
+    border: "border-l-risk-medium",
+    badge: "bg-risk-medium-soft border-risk-medium-line text-risk-medium",
+    title: "text-risk-medium",
     label: "Medium Risk",
   },
   low: {
-    border: "border-l-blue-500",
-    badge: "bg-blue-50 border-blue-100 text-blue-700",
-    title: "text-blue-700",
+    border: "border-l-risk-low",
+    badge: "bg-risk-low-soft border-risk-low-line text-risk-low",
+    title: "text-risk-low",
     label: "Low Risk",
   },
 };
@@ -350,7 +350,7 @@ function ReviewContent() {
     const length = match.end - match.start;
 
     // Apply yellow highlight
-    quill.formatText(match.start, length, { background: "#fef08a" }, "silent");
+    quill.formatText(match.start, length, { background: "var(--mark-focus)" }, "silent");
     prevHighlight.current = { start: match.start, length };
 
     // Scroll the highlighted span into the centre of .ql-editor (which is the
@@ -377,7 +377,7 @@ function ReviewContent() {
     if (match) {
       const length = match.end - match.start;
       quill.deleteText(match.start, length);
-      quill.insertText(match.start, card.suggestion, { background: "#bbf7d0" });
+      quill.insertText(match.start, card.suggestion, { background: "var(--mark-applied)" });
       prevHighlight.current = null;
     }
 
@@ -672,7 +672,7 @@ function ReviewContent() {
         const idx   = text.indexOf(selectionToolbar.text);
         if (quill && idx !== -1) {
           quill.deleteText(idx, selectionToolbar.text.length);
-          quill.insertText(idx, data.refined, { background: "#bbf7d0" });
+          quill.insertText(idx, data.refined, { background: "var(--mark-applied)" });
           if (contractId) contractStore.updateDelta(contractId, quill.getContents());
         }
         setSelectionToolbar(null);
@@ -700,12 +700,12 @@ function ReviewContent() {
     // overflow-hidden: prevents page-level scroll so inner panels scroll independently
     <div className="flex flex-col h-[calc(100vh-4rem)] overflow-hidden">
       {computeError && (
-        <div className="fixed bottom-5 right-5 z-50 max-w-sm rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-lg">
+        <div className="fixed bottom-5 right-5 z-50 max-w-sm rounded-xl border border-risk-medium-line bg-risk-medium-soft px-4 py-3 text-sm text-foreground shadow-e3">
           {computeError}
         </div>
       )}
       {/* Sub-header */}
-      <header className="shrink-0 border-b bg-background/80">
+      <header className="shrink-0 border-b border-border bg-background/80">
         <div className="flex h-14 items-center justify-between px-6">
           <div className="flex items-center gap-4">
             <button
@@ -718,7 +718,7 @@ function ReviewContent() {
             <div className="h-4 w-px bg-border" />
             <span className="text-sm font-semibold truncate max-w-[280px]">{fileName}</span>
             {contractType && (
-              <span className="rounded bg-muted px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+              <span className="eyebrow rounded bg-muted px-2 py-1">
                 {contractType}
               </span>
             )}
@@ -729,7 +729,7 @@ function ReviewContent() {
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                   activeTab === tab
                     ? "bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted"
@@ -741,7 +741,7 @@ function ReviewContent() {
           </nav>
 
           <div className="flex items-center gap-2">
-            <Button size="sm" className="gap-2">
+            <Button size="sm" className="gap-2 bg-brand text-brand-foreground hover:bg-brand/90">
               <Sparkles className="h-4 w-4" />
               Export Report
             </Button>
@@ -778,9 +778,9 @@ function ReviewContent() {
           {/* Left: Quill editor */}
           <div className="flex-1 flex flex-col overflow-hidden">
             {activeClause && (
-              <div className="border-b bg-amber-50 px-6 py-2 flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-amber-400 shrink-0" />
-                <span className="text-xs text-amber-700 font-medium">
+              <div className="border-b border-border bg-[var(--mark-focus)]/40 px-6 py-2 flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-[var(--mark-focus)] ring-1 ring-foreground/20 shrink-0" />
+                <span className="text-xs text-foreground font-medium">
                   Clause highlighted — click &quot;Replace in doc&quot; on the card to apply fix
                 </span>
               </div>
@@ -806,30 +806,30 @@ function ReviewContent() {
                   onMouseDown={e => e.preventDefault()}
                 >
                   {!selectionRefineOpen ? (
-                    <div className="flex items-center gap-1 rounded-lg border bg-background shadow-lg px-2 py-1.5">
+                    <div className="flex items-center gap-1 rounded-xl border border-border bg-popover shadow-e2 px-2 py-1.5">
                       <button
-                        className="flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium hover:bg-muted transition-colors"
+                        className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium hover:bg-muted transition-colors"
                         onClick={() => {
                           setSidePanel("chat");
                           setChatInput(`"${selectionToolbar.text.slice(0, 120)}${selectionToolbar.text.length > 120 ? "…" : ""}" — explain any legal risks in this passage.`);
                           setSelectionToolbar(null);
                         }}
                       >
-                        <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
+                        <MessageSquare className="h-3.5 w-3.5 text-brand" />
                         Ask AI
                       </button>
                       <div className="w-px h-4 bg-border" />
                       <button
-                        className="flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium hover:bg-muted transition-colors"
+                        className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium hover:bg-muted transition-colors"
                         onClick={() => setSelectionRefineOpen(true)}
                       >
-                        <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />
+                        <Sparkles className="h-3.5 w-3.5 text-brand" />
                         Refine
                       </button>
                     </div>
                   ) : (
-                    <div className="w-72 rounded-lg border bg-background shadow-lg p-3 space-y-2">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Refine selected text</p>
+                    <div className="w-72 rounded-xl border border-border bg-popover shadow-e2 p-3 space-y-2">
+                      <p className="eyebrow">Refine selected text</p>
                       <p className="text-xs text-muted-foreground line-clamp-2 italic">
                         &ldquo;{selectionToolbar.text.slice(0, 100)}{selectionToolbar.text.length > 100 ? "…" : ""}&rdquo;
                       </p>
@@ -837,7 +837,7 @@ function ReviewContent() {
                         autoFocus
                         rows={2}
                         placeholder="e.g. make it more founder-friendly, EU jurisdiction…"
-                        className="w-full rounded-md border bg-muted/30 px-2.5 py-1.5 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+                        className="w-full rounded-lg border border-border bg-muted/30 px-2.5 py-1.5 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-ring"
                         value={selectionRefineNote}
                         onChange={e => setSelectionRefineNote(e.target.value)}
                         onKeyDown={e => {
@@ -848,7 +848,7 @@ function ReviewContent() {
                       <div className="flex gap-2">
                         <Button
                           size="sm"
-                          className="flex-1 h-7 text-xs gap-1"
+                          className="flex-1 h-7 text-xs gap-1 bg-brand text-brand-foreground hover:bg-brand/90"
                           disabled={selectionRefineLoading || !selectionRefineNote.trim()}
                           onClick={handleSelectionRefine}
                         >
@@ -866,20 +866,20 @@ function ReviewContent() {
                     </div>
                   )}
                   {/* Arrow pointing down toward the selection */}
-                  <div className="w-2.5 h-2.5 rotate-45 border-b border-r bg-background -mt-[5px] border-border shadow-sm" />
+                  <div className="w-2.5 h-2.5 rotate-45 border-b border-r bg-popover -mt-[5px] border-border shadow-sm" />
                 </div>
               )}
             </div>
           </div>
 
           {/* Right: AI panel */}
-          <aside className="w-[400px] border-l flex flex-col bg-muted/20 overflow-hidden">
+          <aside className="w-[400px] border-l border-border flex flex-col bg-sidebar overflow-hidden">
 
             {/* Panel header + tab toggle */}
-            <div className="px-5 py-3 border-b bg-background shrink-0">
+            <div className="px-5 py-3 border-b border-border bg-background shrink-0">
               <div className="flex items-center justify-between mb-3">
                 <div>
-                  <h3 className="text-sm font-bold">AI Analysis</h3>
+                  <h3 className="text-sm font-semibold tracking-tight">AI Analysis</h3>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {clauses.length} {clauses.length === 1 ? "issue" : "issues"} remaining
                   </p>
@@ -895,21 +895,21 @@ function ReviewContent() {
                     );
                   })}
                   {fixedCount > 0 && (
-                    <span className="rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-green-50 border-green-100 text-green-700">
+                    <span className="rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-risk-ok-soft border-risk-ok-line text-risk-ok">
                       {fixedCount} fixed by AI
                     </span>
                   )}
                 </div>
               </div>
               {/* Tab toggle */}
-              <div className="flex rounded-md border bg-muted/40 p-0.5 gap-0.5">
+              <div className="flex rounded-lg border border-border bg-muted/40 p-0.5 gap-0.5">
                 {(["issues", "chat"] as const).map(tab => (
                   <button
                     key={tab}
                     onClick={() => setSidePanel(tab)}
-                    className={`flex-1 rounded py-1 text-xs font-semibold transition-colors capitalize ${
+                    className={`flex-1 rounded-md py-1 text-xs font-semibold transition-colors capitalize ${
                       sidePanel === tab
-                        ? "bg-background shadow-sm text-foreground"
+                        ? "bg-background shadow-e1 text-foreground"
                         : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
@@ -930,7 +930,7 @@ function ReviewContent() {
                 {contractId && (
                   <Button
                     variant="outline"
-                    className="w-full gap-2 text-xs"
+                    className="w-full gap-2 text-xs border-brand-line text-brand hover:bg-brand-soft"
                     size="sm"
                     disabled={reanalysing}
                     onClick={handleReanalyse}
@@ -952,25 +952,25 @@ function ReviewContent() {
                 </Button>
 
                 {addingIssue && (
-                  <div className="rounded-lg border bg-card shadow-sm p-3 space-y-2">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                  <div className="rounded-xl border border-border bg-card shadow-e1 p-3 space-y-2">
+                    <p className="eyebrow">
                       Add a missed issue
                     </p>
                     <textarea
                       rows={2}
                       placeholder="Passage — paste the exact text from the document"
-                      className="w-full rounded-md border bg-background px-3 py-2 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-ring"
                       value={addForm.passage}
                       onChange={e => setAddForm(f => ({ ...f, passage: e.target.value }))}
                     />
                     <input
                       placeholder="Clause title — e.g. Clause 7: Indemnification"
-                      className="w-full rounded-md border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
                       value={addForm.clause}
                       onChange={e => setAddForm(f => ({ ...f, clause: e.target.value }))}
                     />
                     <select
-                      className="w-full rounded-md border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
                       value={addForm.type}
                       onChange={e => setAddForm(f => ({ ...f, type: e.target.value as Risk }))}
                     >
@@ -980,14 +980,14 @@ function ReviewContent() {
                     </select>
                     <input
                       placeholder="Issue — what is legally problematic"
-                      className="w-full rounded-md border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
                       value={addForm.issue}
                       onChange={e => setAddForm(f => ({ ...f, issue: e.target.value }))}
                     />
                     <textarea
                       rows={2}
                       placeholder="Suggested replacement clause"
-                      className="w-full rounded-md border bg-background px-3 py-2 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-ring"
                       value={addForm.suggestion}
                       onChange={e => setAddForm(f => ({ ...f, suggestion: e.target.value }))}
                     />
@@ -1026,8 +1026,8 @@ function ReviewContent() {
                     <div
                       key={card.id}
                       onClick={() => { if (!isRefining) setActiveCardId(isActive ? null : card.id); }}
-                      className={`rounded-lg border border-l-4 bg-card shadow-sm cursor-pointer transition-shadow ${style.border} ${
-                        isActive ? "ring-2 ring-primary/30 shadow-md" : "hover:shadow-md"
+                      className={`rounded-xl border border-l-4 bg-card shadow-e1 cursor-pointer transition-shadow ${style.border} ${
+                        isActive ? "ring-2 ring-brand/30 shadow-e2" : "hover:shadow-e2"
                       }`}
                     >
                       <div className="px-4 pt-4 pb-3">
@@ -1035,15 +1035,15 @@ function ReviewContent() {
                           {style.label}
                         </span>
                         {card.source === "user" && (
-                          <span className="ml-1.5 rounded border border-indigo-100 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-indigo-700">
+                          <span className="ml-1.5 rounded border border-border bg-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
                             Added by you
                           </span>
                         )}
                         <h4 className={`text-sm font-semibold mt-2 mb-1 ${style.title}`}>{card.clause}</h4>
                         <p className="text-xs text-muted-foreground mb-2">{card.issue}</p>
 
-                        <div className="rounded-md bg-muted/50 border px-3 py-2.5 mb-3">
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
+                        <div className="rounded-lg bg-muted/50 border border-border px-3 py-2.5 mb-3">
+                          <p className="eyebrow mb-1.5">
                             Recommended Clause
                           </p>
                           <p className="text-xs text-foreground leading-5">{card.suggestion}</p>
@@ -1056,7 +1056,7 @@ function ReviewContent() {
                               autoFocus
                               rows={2}
                               placeholder="e.g. we're a UK company, make it more founder-friendly…"
-                              className="w-full rounded-md border bg-background px-3 py-2 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+                              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-ring"
                               value={refineNote}
                               onChange={e => setRefineNote(e.target.value)}
                               onKeyDown={e => {
@@ -1070,7 +1070,7 @@ function ReviewContent() {
                             <div className="flex gap-2 mt-1.5">
                               <Button
                                 size="sm"
-                                className="flex-1 text-xs h-7 gap-1"
+                                className="flex-1 text-xs h-7 gap-1 bg-brand text-brand-foreground hover:bg-brand/90"
                                 disabled={refineLoading || !refineNote.trim()}
                                 onClick={e => { e.stopPropagation(); handleRefine(card); }}
                               >
@@ -1102,7 +1102,7 @@ function ReviewContent() {
                           <Button
                             size="sm"
                             variant={isRefining ? "secondary" : "default"}
-                            className="flex-1 text-xs h-8 gap-1"
+                            className={`flex-1 text-xs h-8 gap-1 ${isRefining ? "" : "bg-brand text-brand-foreground hover:bg-brand/90"}`}
                             onClick={e => {
                               e.stopPropagation();
                               if (isRefining) { setRefiningId(null); setRefineNote(""); }
@@ -1120,7 +1120,7 @@ function ReviewContent() {
                             <input
                               autoFocus
                               placeholder="Why isn't this an issue? (optional)"
-                              className="w-full rounded-md border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
                               value={dismissReason}
                               onChange={e => setDismissReason(e.target.value)}
                               onKeyDown={e => {
@@ -1168,7 +1168,7 @@ function ReviewContent() {
 
                 {/* Dismissed clauses — collapsed by default */}
                 {dismissedClauses.length > 0 && (
-                  <div className="pt-2 border-t">
+                  <div className="pt-2 border-t border-border">
                     <button
                       className="flex w-full items-center justify-between py-1 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
                       onClick={() => setShowDismissed(v => !v)}
@@ -1179,11 +1179,11 @@ function ReviewContent() {
                     {showDismissed && (
                       <div className="mt-2 space-y-2">
                         {dismissedClauses.map(card => (
-                          <div key={card.id} className="rounded-lg border bg-muted/30 px-3 py-2.5">
+                          <div key={card.id} className="rounded-lg border border-border bg-muted/30 px-3 py-2.5">
                             <div className="flex items-start justify-between gap-2">
                               <p className="text-xs font-semibold text-muted-foreground line-through">{card.clause}</p>
                               {card.source === "user" && (
-                                <span className="shrink-0 rounded border border-indigo-100 bg-indigo-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-indigo-700">
+                                <span className="shrink-0 rounded border border-border bg-background px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-muted-foreground">
                                   Yours
                                 </span>
                               )}
@@ -1212,7 +1212,7 @@ function ReviewContent() {
                 <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
                   {chatHistory.length === 0 && (
                     <div className="text-center py-10 space-y-2">
-                      <Sparkles className="h-6 w-6 mx-auto text-muted-foreground/50" />
+                      <Sparkles className="h-6 w-6 mx-auto text-brand/50" />
                       <p className="text-xs text-muted-foreground">Ask anything about this contract.</p>
                       <p className="text-[11px] text-muted-foreground/60">e.g. &ldquo;What are my termination rights?&rdquo; or &ldquo;Is this auto-renewal clause standard?&rdquo;</p>
                     </div>
@@ -1221,8 +1221,8 @@ function ReviewContent() {
                     <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
                       <div className={`max-w-[85%] rounded-xl px-3 py-2 text-xs leading-5 ${
                         msg.role === "user"
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-background border text-foreground"
+                          ? "bg-brand text-brand-foreground"
+                          : "bg-background border border-border text-foreground"
                       }`}>
                         {msg.content}
                       </div>
@@ -1230,7 +1230,7 @@ function ReviewContent() {
                   ))}
                   {chatLoading && (
                     <div className="flex justify-start">
-                      <div className="bg-background border rounded-xl px-3 py-2">
+                      <div className="bg-background border border-border rounded-xl px-3 py-2">
                         <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
                       </div>
                     </div>
@@ -1239,12 +1239,12 @@ function ReviewContent() {
                 </div>
 
                 {/* Chat input */}
-                <div className="shrink-0 border-t bg-background px-3 py-3">
+                <div className="shrink-0 border-t border-border bg-background px-3 py-3">
                   <div className="flex items-end gap-2">
                     <textarea
                       rows={2}
                       placeholder="Ask about this contract…"
-                      className="flex-1 rounded-md border bg-muted/30 px-3 py-2 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+                      className="flex-1 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-ring"
                       value={chatInput}
                       onChange={e => setChatInput(e.target.value)}
                       onKeyDown={e => {
@@ -1256,7 +1256,7 @@ function ReviewContent() {
                     />
                     <Button
                       size="icon"
-                      className="h-9 w-9 shrink-0"
+                      className="h-9 w-9 shrink-0 bg-brand text-brand-foreground hover:bg-brand/90"
                       disabled={chatLoading || !chatInput.trim()}
                       onClick={handleChat}
                     >

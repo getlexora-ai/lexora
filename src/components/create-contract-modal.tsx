@@ -101,8 +101,8 @@ export function CreateContractModal({ open, onClose, onGenerate, generating }: P
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v && !generating) onClose(); }}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[calc(100dvh-2rem)] max-w-lg flex-col">
+        <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-brand" />
             Generate Contract with AI
@@ -112,7 +112,7 @@ export function CreateContractModal({ open, onClose, onGenerate, generating }: P
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 pt-1">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pt-1">
           {/* Contract name */}
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Contract Name</label>
@@ -239,20 +239,21 @@ export function CreateContractModal({ open, onClose, onGenerate, generating }: P
             />
           </div>
 
-          <div className="flex justify-end gap-2 pt-1">
-            <Button variant="outline" onClick={onClose} disabled={generating}>
-              Cancel
-            </Button>
-            {/* Default variant = graphite. Primary actions are never blue —
-                brand is reserved for links and focus. */}
-            <Button onClick={handleSubmit} disabled={!canGenerate || generating}>
-              {generating ? (
-                <><Loader2 className="h-4 w-4 animate-spin" />Generating…</>
-              ) : (
-                <><Sparkles className="h-4 w-4" />Generate Contract</>
-              )}
-            </Button>
-          </div>
+        </div>
+
+        <div className="flex shrink-0 justify-end gap-2 border-t border-border pt-3">
+          <Button variant="outline" onClick={onClose} disabled={generating}>
+            Cancel
+          </Button>
+          {/* Default variant = graphite. Primary actions are never blue —
+              brand is reserved for links and focus. */}
+          <Button onClick={handleSubmit} disabled={!canGenerate || generating}>
+            {generating ? (
+              <><Loader2 className="h-4 w-4 animate-spin" />Generating…</>
+            ) : (
+              <><Sparkles className="h-4 w-4" />Generate Contract</>
+            )}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

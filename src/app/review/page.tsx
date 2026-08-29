@@ -126,6 +126,10 @@ function ReviewContent() {
   const [restoringId, setRestoringId] = useState<string | null>(null);
   const [savingVersion, setSavingVersion] = useState(false);
 
+  // Export menu (.docx / .pdf)
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exporting, setExporting]   = useState(false);
+
   // User corrections: dismissed ("not an issue") clauses + the "add missed issue" form
   const [dismissedClauses, setDismissedClauses] = useState<RiskClause[]>([]);
   const [dismissingId, setDismissingId]         = useState<string | null>(null);
@@ -900,9 +904,45 @@ function ReviewContent() {
           </Button>
         )}
 
-        <Button size="sm" variant="outline">
-          Export
-        </Button>
+        <div className="relative">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={exporting}
+            onClick={() => setExportOpen(o => !o)}
+          >
+            {exporting ? <Loader2 className="size-3.5 animate-spin" /> : null}
+            Export
+          </Button>
+          {exportOpen && !exporting && (
+            <div className="absolute right-0 top-full z-50 mt-1 w-40 overflow-hidden rounded-lg border border-border bg-popover py-1 text-sm shadow-e3">
+              {(["docx", "pdf"] as const).map(fmt => (
+                <button
+                  key={fmt}
+                  type="button"
+                  className="block w-full px-3 py-1.5 text-left hover:bg-surface-2"
+                  onClick={async () => {
+                    setExportOpen(false);
+                    const quill = quillRef.current;
+                    if (!quill) return;
+                    setExporting(true);
+                    try {
+                      const { exportContract } = await import("@/lib/export-contract");
+                      await exportContract(quill.getContents(), fileName, fmt);
+                    } catch (err) {
+                      console.error("[export] failed:", err);
+                      setComputeError("Export failed. Please try again.");
+                    } finally {
+                      setExporting(false);
+                    }
+                  }}
+                >
+                  {fmt === "docx" ? "Word (.docx)" : "PDF (.pdf)"}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </header>
 
       {/* Slim standing disclaimer, directly under the toolbar. */}

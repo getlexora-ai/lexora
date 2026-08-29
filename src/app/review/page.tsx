@@ -13,7 +13,6 @@ import { RdgStrip } from "@/components/rdg-notice";
 import { BrandMark } from "@/components/brand-mark";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { analysisStore, RiskClause } from "@/lib/analysis-store";
-import { contractStore } from "@/lib/contract-store";
 import { cn } from "@/lib/utils";
 import { looksLikeMarkdown, markdownToHtml, stripPageSeparators } from "@/lib/markdown";
 
@@ -108,22 +107,24 @@ function ReviewContent() {
   const contractId   = searchParams.get("contractId");
   const isCreateMode = searchParams.get("mode") === "create";
 
-  // diskResult is always most up-to-date (remaining clauses + delta after fixes).
-  // memResult is only set immediately after a fresh analysis — fall back to it
-  // if there's no saved disk data yet (edge case: localStorage unavailable).
-  const diskResult = contractId ? contractStore.getData(contractId) : null;
+  // The DB is the single source of truth. `analysisStore` (in-memory) only
+  // carries a just-finished analysis into the review screen on first navigation;
+  // for any re-open, the fetch effect below replaces this from Postgres.
   const memResult  = analysisStore.get();
-  const result     = diskResult ?? memResult;
-
-  // Restore the already-fixed count so the badge and stats are correct on re-open
-  const savedMeta    = contractId ? contractStore.getAll().find(c => c.id === contractId) : null;
-  const initialFixed = savedMeta?.issuesFixed ?? 0;
+  const result     = memResult;
 
   const [clauses, setClauses]           = useState<RiskClause[]>(result?.clauses ?? []);
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
   const [activeTab, setActiveTab]       = useState("Review");
-  const [fixedCount, setFixedCount]     = useState(initialFixed);
+  const [fixedCount, setFixedCount]     = useState(0);
   const [dbLoading, setDbLoading]       = useState(!!contractId && !result);
+
+  // Version history / audit trail (contract_versions)
+  type Version = { id: string; snapshot_reason: string | null; created_at: string };
+  const [versions, setVersions]       = useState<Version[]>([]);
+  const [versionsLoading, setVersionsLoading] = useState(false);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
+  const [savingVersion, setSavingVersion] = useState(false);
 
   // User corrections: dismissed ("not an issue") clauses + the "add missed issue" form
   const [dismissedClauses, setDismissedClauses] = useState<RiskClause[]>([]);
@@ -269,7 +270,8 @@ function ReviewContent() {
         placeholder: "Extracted contract text will appear here…",
       });
 
-      // Prefer DB content (arrived before Quill was ready) → then localStorage → then in-memory
+      // Prefer DB content (arrived before Quill was ready) → then the in-memory
+      // hand-off from a just-finished analysis.
       const pending = pendingDbContent.current;
       if (pending?.delta) {
         quill.setContents(pending.delta);
@@ -277,9 +279,6 @@ function ReviewContent() {
       } else if (pending?.text) {
         setDocText(quill, pending.text);
         pendingDbContent.current = null;
-      } else if (diskResult?.delta) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        quill.setContents(diskResult.delta as any);
       } else if (result?.extractedText) {
         setDocText(quill, result.extractedText);
       }
@@ -415,10 +414,7 @@ function ReviewContent() {
 
     const delta = quill.getContents();
 
-    // Persist to localStorage (fast, local fallback)
-    if (contractId) contractStore.updateDelta(contractId, delta);
-
-    // Persist to Supabase: update quill_delta on the contract. The issues_fixed
+    // Persist to Postgres: update quill_delta on the contract. The issues_fixed
     // counter is bumped server-side by the clause PATCH below (status: replaced).
     if (contractId) {
       fetch(`/api/contracts/${contractId}`, {
@@ -438,6 +434,69 @@ function ReviewContent() {
     setClauses(prev => prev.filter(c => c.id !== card.id));
     setFixedCount(n => n + 1);
     setActiveCardId(null);
+
+    void snapshotVersion(`Applied fix: ${card.clause}`);
+  }
+
+  // ── Version history / audit trail ──────────────────────────
+  /** Save an immutable snapshot of the current document to contract_versions. */
+  async function snapshotVersion(reason: string): Promise<void> {
+    const quill = quillRef.current;
+    if (!contractId || !quill) return;
+    try {
+      await fetch(`/api/contracts/${contractId}/versions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quill_delta: quill.getContents(), snapshot_reason: reason }),
+      });
+      if (activeTab === "History") void loadVersions();
+    } catch (err) {
+      console.error("[snapshotVersion] failed:", err);
+    }
+  }
+
+  async function loadVersions(): Promise<void> {
+    if (!contractId) return;
+    setVersionsLoading(true);
+    try {
+      const res = await fetch(`/api/contracts/${contractId}/versions`);
+      const { versions: rows } = await res.json();
+      setVersions(Array.isArray(rows) ? rows : []);
+    } catch {
+      setVersions([]);
+    } finally {
+      setVersionsLoading(false);
+    }
+  }
+
+  /** Load a snapshot's delta back into the editor and persist it as the current state. */
+  async function restoreVersion(v: Version): Promise<void> {
+    const quill = quillRef.current;
+    if (!contractId || !quill) return;
+    setRestoringId(v.id);
+    try {
+      const res = await fetch(`/api/contracts/${contractId}/versions/${v.id}`);
+      const { version } = await res.json();
+      if (!version?.quill_delta) {
+        setComputeError("Couldn't load that version.");
+        return;
+      }
+      quill.setContents(version.quill_delta);
+      quill.history.clear();
+      await fetch(`/api/contracts/${contractId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quill_delta: version.quill_delta }),
+      });
+      await snapshotVersion(
+        `Restored version from ${new Date(v.created_at).toLocaleString()}`,
+      );
+      setActiveTab("Review");
+    } catch {
+      setComputeError("Restore failed. Please try again.");
+    } finally {
+      setRestoringId(null);
+    }
   }
 
   // "Not an issue" — dismiss a false-positive clause. Guests mutate local state only.
@@ -620,13 +679,14 @@ function ReviewContent() {
         if (data.updatedDocument && quillRef.current) {
           setDocText(quillRef.current, data.updatedDocument);
           quillRef.current.history.clear();
-          // Save updated delta to Supabase if we have a contractId
+          // Persist the AI's whole-document rewrite, and snapshot it for the audit trail.
           if (contractId) {
             fetch(`/api/contracts/${contractId}`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ quill_delta: quillRef.current.getContents() }),
             }).catch(() => {});
+            void snapshotVersion(`AI edit: ${q.slice(0, 80)}`);
           }
         }
       } else {
@@ -705,7 +765,13 @@ function ReviewContent() {
         if (quill && idx !== -1) {
           quill.deleteText(idx, selectionToolbar.text.length);
           quill.insertText(idx, data.refined, { background: "var(--mark-applied)" });
-          if (contractId) contractStore.updateDelta(contractId, quill.getContents());
+          if (contractId) {
+            fetch(`/api/contracts/${contractId}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ quill_delta: quill.getContents() }),
+            }).catch(err => console.error("[selection refine] delta save failed:", err));
+          }
         }
         setSelectionToolbar(null);
         setSelectionRefineOpen(false);
@@ -722,6 +788,12 @@ function ReviewContent() {
     const t = setTimeout(() => setComputeError(null), 7000);
     return () => clearTimeout(t);
   }, [computeError]);
+
+  // Load version history when the History tab is opened.
+  useEffect(() => {
+    if (activeTab === "History") void loadVersions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, contractId]);
 
   // noData only when there's no in-memory/localStorage result AND no contractId to fetch from Supabase
   const noData = !result && !contractId;
@@ -811,6 +883,23 @@ function ReviewContent() {
           ))}
         </div>
 
+        {contractId && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={savingVersion}
+            onClick={async () => {
+              setSavingVersion(true);
+              await snapshotVersion("Manual save");
+              setSavingVersion(false);
+              setComputeError("Version saved.");
+            }}
+          >
+            {savingVersion ? <Loader2 className="size-3.5 animate-spin" /> : null}
+            Save version
+          </Button>
+        )}
+
         <Button size="sm" variant="outline">
           Export
         </Button>
@@ -826,6 +915,60 @@ function ReviewContent() {
             <Button variant="outline" onClick={() => router.push("/dashboard")}>
               Back to dashboard
             </Button>
+          </div>
+        </main>
+      ) : activeTab === "History" ? (
+        <main className="overflow-y-auto p-6">
+          <div className="mx-auto max-w-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-[15px] font-semibold">Version history</h3>
+                <p className="text-[13px] text-text-2">
+                  Every applied fix, AI edit and manual save is snapshotted. Restore any point.
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => void loadVersions()} disabled={versionsLoading}>
+                {versionsLoading ? <Loader2 className="size-3.5 animate-spin" /> : null}
+                Refresh
+              </Button>
+            </div>
+
+            {!contractId ? (
+              <p className="text-[13px] text-text-3">Save this contract first to keep a history.</p>
+            ) : versionsLoading && versions.length === 0 ? (
+              <p className="text-[13px] text-text-3">Loading…</p>
+            ) : versions.length === 0 ? (
+              <p className="text-[13px] text-text-3">
+                No snapshots yet. One is written each time you apply a fix, run an AI edit, or hit “Save version”.
+              </p>
+            ) : (
+              <ol className="space-y-2">
+                {versions.map(v => (
+                  <li
+                    key={v.id}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface px-3.5 py-2.5"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-[13px] font-medium">
+                        {v.snapshot_reason ?? "Snapshot"}
+                      </p>
+                      <p className="text-[11.5px] text-text-3">
+                        {new Date(v.created_at).toLocaleString()}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={restoringId === v.id}
+                      onClick={() => void restoreVersion(v)}
+                    >
+                      {restoringId === v.id ? <Loader2 className="size-3.5 animate-spin" /> : <Undo2 className="size-3.5" />}
+                      Restore
+                    </Button>
+                  </li>
+                ))}
+              </ol>
+            )}
           </div>
         </main>
       ) : activeTab !== "Review" ? (

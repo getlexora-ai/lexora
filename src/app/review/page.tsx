@@ -1025,7 +1025,7 @@ function ReviewContent() {
             {sidePanel === "issues" && (
               <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
                 {addingIssue && (
-                  <div className="space-y-2 rounded-lg border border-border bg-surface p-3 shadow-e-inset">
+                  <div className="shrink-0 space-y-2 rounded-lg border border-border bg-surface p-3 shadow-e-inset">
                     <p className="eyebrow">Add a missed issue</p>
                     <textarea
                       rows={2}
@@ -1107,7 +1107,7 @@ function ReviewContent() {
                     <div
                       key={card.id}
                       className={cn(
-                        "overflow-hidden rounded-lg border border-l-[3px] border-border bg-surface shadow-e-inset",
+                        "shrink-0 overflow-hidden rounded-lg border border-l-[3px] border-border bg-surface shadow-e-inset",
                         style.rail
                       )}
                     >
@@ -1287,7 +1287,7 @@ function ReviewContent() {
 
                 {/* Dismissed — collapsed by default */}
                 {dismissedClauses.length > 0 && (
-                  <div className="mt-1">
+                  <div className="mt-1 shrink-0">
                     <button
                       type="button"
                       aria-expanded={showDismissed}

@@ -61,11 +61,32 @@ test("GET /api/contracts/[id]/chat — guest is blocked", async () => {
   assert.equal(res.status, 401);
 });
 
-test("compute routes stay open to guests (analyse is not gated)", async () => {
-  const res = await j("/api/analyse", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ text: "" }), // empty -> 400 from the handler, never 401
+// Compute (paid-AI) routes are hard auth-gated in src/proxy.ts — no anonymous AI.
+// A signed-out POST must get 401 before the handler ever runs.
+const COMPUTE_POSTS = [
+  ["/api/analyse", { text: "x" }],
+  ["/api/generate", { prompt: "x" }],
+  ["/api/extract", {}],
+  ["/api/refine", {}],
+  ["/api/chat", { question: "x", contractText: "x" }],
+  [`/api/contracts/${SOME_ID}/reanalyse`, { text: "x" }],
+];
+
+for (const [path, body] of COMPUTE_POSTS) {
+  test(`POST ${path} — guest is blocked with 401`, async () => {
+    const res = await j(path, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    assert.equal(res.status, 401);
+    assert.deepEqual(await res.json(), { error: "sign_in_required" });
   });
+}
+
+test("GET /api/analyse — non-POST compute traffic is not gated by the proxy", async () => {
+  // GET isn't a compute call; the proxy only gates POST. The handler itself
+  // 405s (no GET export), but never 401 from the auth gate.
+  const res = await j("/api/analyse");
   assert.notEqual(res.status, 401);
 });

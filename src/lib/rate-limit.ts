@@ -15,35 +15,25 @@ export type ComputeRoute =
   | "chat"
   | "reanalyse";
 
-type Tier = { guest: Pair; user: Pair };
-
 /**
  * Per-key request caps. Single source of truth — tune from the KPI
- * (rate_limit_blocks ÷ total compute requests, split by scope).
- * Guests are keyed by IP; signed-in users by Clerk id.
+ * (rate_limit_blocks ÷ total compute requests).
+ *
+ * Every compute route is auth-gated (see `src/proxy.ts`), so there are no
+ * anonymous callers: every bucket is keyed by Clerk user id.
  */
-export const LIMITS: Record<ComputeRoute | "compute", Tier> = {
-  extract:         { guest: { hour: 3,  day: 5   }, user: { hour: 15,  day: 40  } },
-  analyse:         { guest: { hour: 4,  day: 8   }, user: { hour: 20,  day: 60  } },
-  generate:        { guest: { hour: 3,  day: 6   }, user: { hour: 15,  day: 40  } },
-  refine:          { guest: { hour: 10, day: 30  }, user: { hour: 40,  day: 150 } },
-  "contract-edit": { guest: { hour: 10, day: 30  }, user: { hour: 40,  day: 150 } },
-  chat:            { guest: { hour: 15, day: 40  }, user: { hour: 60,  day: 200 } },
-  // guests can't reach reanalyse (auth-gated); the user cap stops a runaway loop
-  reanalyse:       { guest: { hour: 0,  day: 0   }, user: { hour: 20,  day: 60  } },
-  // global guard across ALL compute routes for one key
-  compute:         { guest: { hour: 15, day: 25  }, user: { hour: 200, day: 600 } },
+export const LIMITS: Record<ComputeRoute | "compute", Pair> = {
+  extract:         { hour: 15,  day: 40  },
+  analyse:         { hour: 20,  day: 60  },
+  generate:        { hour: 15,  day: 40  },
+  refine:          { hour: 40,  day: 150 },
+  "contract-edit": { hour: 40,  day: 150 },
+  chat:            { hour: 60,  day: 200 },
+  // the user cap stops a runaway re-analyse loop
+  reanalyse:       { hour: 20,  day: 60  },
+  // global guard across ALL compute routes for one user
+  compute:         { hour: 200, day: 600 },
 };
-
-/** First hop of X-Forwarded-For, else X-Real-IP, else "unknown". */
-export function clientIp(req: Request): string {
-  const xff = req.headers.get("x-forwarded-for");
-  if (xff) {
-    const first = xff.split(",")[0]?.trim();
-    if (first) return first;
-  }
-  return req.headers.get("x-real-ip")?.trim() || "unknown";
-}
 
 /** Atomic upsert-increment; returns the new count for this key+window. */
 async function bump(baseKey: string, win: Window, now: Date): Promise<number> {
@@ -65,27 +55,30 @@ async function bump(baseKey: string, win: Window, now: Date): Promise<number> {
  *   if (limited) return limited;
  *
  * Returns a 429 NextResponse when the caller is over the limit, or null to
- * proceed. Fails open — a limiter/DB outage must not break analysis.
+ * proceed. Fails open — a limiter/DB outage must not break analysis. Also
+ * returns null when there is no Clerk user id to key on: compute routes are
+ * auth-gated upstream, so this only happens outside a request scope.
  */
 export async function enforceRateLimit(
   req: Request,
   route: ComputeRoute,
 ): Promise<NextResponse | null> {
+  void req; // kept for signature stability; buckets are keyed by user id now
+
   let userId: string | null = null;
   try {
     userId = await currentUserId();
   } catch {
-    // auth() outside a request scope (e.g. some test contexts) — treat as guest
+    // auth() outside a request scope (e.g. some test contexts)
   }
+  if (!userId) return null;
 
-  const scope: "guest" | "user" = userId ? "user" : "guest";
-  const idPart = userId ? `u:${userId}` : `ip:${clientIp(req)}`;
   const now = new Date();
-
+  const idPart = `u:${userId}`;
   const routeKey = `${route}:${idPart}`;
   const globalKey = `compute:${idPart}`;
-  const routeLimits = LIMITS[route][scope];
-  const globalLimits = LIMITS.compute[scope];
+  const routeLimits = LIMITS[route];
+  const globalLimits = LIMITS.compute;
 
   try {
     const [rh, rd, gh, gd] = await Promise.all([
@@ -107,11 +100,11 @@ export async function enforceRateLimit(
     if (blocked) {
       await query(
         `insert into rate_limit_blocks (route, scope, bucket_key) values ($1, $2, $3)`,
-        [route, scope, blocked.key],
+        [route, "user", blocked.key],
       ).catch(() => {});
       const retryAfter = blocked.verdict.retryAfter;
       return NextResponse.json(
-        { error: "rate_limited", retry_after: retryAfter, scope },
+        { error: "rate_limited", retry_after: retryAfter, scope: "user" },
         { status: 429, headers: { "Retry-After": String(retryAfter) } },
       );
     }

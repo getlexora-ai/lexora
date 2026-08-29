@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { errorResponse } from "@/lib/errors";
+import { currentUserId } from "@/lib/auth";
+import { putOriginal } from "@/lib/storage";
 
 const EXTRACT_FAILED = "We couldn't read text from that file. Try a different file or try again.";
 
@@ -56,9 +58,21 @@ export async function POST(req: NextRequest) {
 
     const bytes = Buffer.from(await file.arrayBuffer());
 
-    // Original-file storage was dropped in the move off Supabase; only the
-    // extracted text is persisted now.
-    const filePath: string | null = null;
+    // Retain the uploaded original behind the pluggable storage interface
+    // (audit finding C2). Returns null when STORAGE_DRIVER is unset/"none", so
+    // this is a no-op until a backend is configured. A storage failure must not
+    // fail the extraction, so swallow and fall back to null.
+    let filePath: string | null = null;
+    try {
+      const userId = (await currentUserId()) ?? "anon";
+      filePath = await putOriginal(bytes, {
+        userId,
+        filename: file.name,
+        contentType: file.type || "application/octet-stream",
+      });
+    } catch (storageErr) {
+      console.error("[extract] putOriginal failed:", storageErr);
+    }
 
     // Match Python SDK: raw binary body, query params for config (no wait_timeout — handled client-side)
     const params = new URLSearchParams({

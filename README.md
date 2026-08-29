@@ -53,6 +53,29 @@ LLMWHISPERER_BASE_URL=https://llmwhisperer-api.eu-west.unstract.com/api/v2
 
 Open [http://localhost:3000](http://localhost:3000) to view the app.
 
+## Original-file storage
+
+By default the uploaded PDF/DOCX is **not** retained — only the extracted text is
+persisted. To keep originals (audit finding C2), configure a storage backend via
+`src/lib/storage.ts`. It is **off by default**, so leaving these unset changes
+nothing.
+
+| Env var | Purpose |
+|---|---|
+| `STORAGE_DRIVER` | `none` (default, or unset) → storage disabled. `fs` → local filesystem. `s3` → S3/R2 (stub, not yet implemented). |
+| `STORAGE_FS_DIR` | Required when `STORAGE_DRIVER=fs`. Absolute path under which originals are written as `originals/<userId>/<uuid>-<filename>` (plus a `.meta.json` sidecar for the content type). If unset, the `fs` driver stays inert. |
+
+When enabled, `/api/extract` stores the upload and returns its opaque key as
+`file_path`; `/api/contracts` persists that key on `contracts.file_path`; and
+`GET /api/contracts/[id]/original` streams the file back to its owner as an
+attachment. When disabled, `file_path` is `null` and the `original` route returns
+404.
+
+The `s3` driver is a documented TODO stub — selecting it throws until it is
+implemented with `@aws-sdk/client-s3` (expected env: `STORAGE_S3_BUCKET`,
+`STORAGE_S3_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, optional
+`STORAGE_S3_ENDPOINT` for R2/MinIO).
+
 ## Roadmap
 
 ### v0.3.0 — Supabase Backend

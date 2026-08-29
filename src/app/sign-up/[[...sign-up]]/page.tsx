@@ -1,16 +1,42 @@
 import { SignUp } from "@clerk/nextjs";
+import {
+  AuthBrandPanel,
+  AuthFormColumn,
+  AuthSplit,
+  AuthTopBar,
+  CLERK_FLUSH_APPEARANCE,
+} from "@/components/auth-shell";
+import { RdgMicro } from "@/components/rdg-notice";
 
 export default function SignUpPage() {
   return (
-    <div className="relative flex min-h-[calc(100vh-4rem)] items-center justify-center overflow-hidden px-6 py-16">
-      <div
-        className="pointer-events-none absolute inset-0 -z-10"
-        style={{
-          background:
-            "radial-gradient(ellipse 60% 50% at 50% 0%, var(--brand-soft), transparent 65%)",
-        }}
-      />
-      <SignUp />
-    </div>
+    <>
+      <AuthTopBar />
+      <AuthSplit>
+        <AuthFormColumn
+          title="Create your account"
+          lede="Start a 14-day trial — no card required. Analyse contracts, see suggested wording, keep the trail."
+        >
+          <SignUp appearance={CLERK_FLUSH_APPEARANCE} />
+          <RdgMicro variant="signup" />
+        </AuthFormColumn>
+
+        <AuthBrandPanel
+          quote={
+            <>
+              Every contract, read line by line —{" "}
+              <span className="hl hl-low">flagged, with suggested wording</span>{" "}
+              — the moment you upload it.
+            </>
+          }
+          by="— what the tool does on day one"
+          stats={[
+            { n: "3", k: "steps to set up" },
+            { n: "~90s", k: "to first analysis" },
+            { n: "0", k: "card required" },
+          ]}
+        />
+      </AuthSplit>
+    </>
   );
 }

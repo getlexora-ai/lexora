@@ -15,6 +15,7 @@ const GATED_COMPUTE_PATHS = new Set([
   "/api/extract",
   "/api/refine",
   "/api/chat",
+  "/api/contract-edit",
 ]);
 
 /** `/api/contracts/<id>/reanalyse` — id is dynamic. */

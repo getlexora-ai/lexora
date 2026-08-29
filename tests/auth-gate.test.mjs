@@ -69,6 +69,7 @@ const COMPUTE_POSTS = [
   ["/api/extract", {}],
   ["/api/refine", {}],
   ["/api/chat", { question: "x", contractText: "x" }],
+  ["/api/contract-edit", { instruction: "x", currentDocument: "x" }],
   [`/api/contracts/${SOME_ID}/reanalyse`, { text: "x" }],
 ];
 

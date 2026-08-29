@@ -196,3 +196,67 @@ console errors (`/`, `/dashboard`, `/review`, `/analysis`, `/sign-in`,
 was not connected in this session, so **the rendered result has not been
 reviewed by eye** — worth a pass in the browser, particularly the review
 screen's three-column breakpoints (720 / 1060px) and the light-mode palette.
+
+## Theme refinement (post-port)
+
+A token-level pass on top of the port, from the theme audit. It is deliberately
+narrow: `src/app/globals.css` plus a single className string. No component
+logic, no route handler, no `src/lib`, no `fetch` call was touched.
+
+### `src/app/globals.css`
+
+- **Palette re-tempered cool** in *both* themes, so light and dark read as one
+  system rather than two. The light ground moves off white to `#eef0f3`, which
+  gives white cards something to separate from — on a white ground a white card
+  can only be found by its shadow.
+- **Contrast lifts.** `--text-2` and `--text-3` were the two quiet tones doing
+  most of the secondary work and both sat under the floor; they are now above
+  4.5:1 on their own ground in both themes. Light `--text-2` is `#565c66`,
+  `--text-3` `#71767f`.
+- **Risk tints deepened.** The `-bg` fills behind high/medium/low were close
+  enough to the surface that a risk pill lost its ground at a glance. Each is
+  deepened and paired with a `-line` hairline in the same hue.
+- **Two-tier elevation.** `--shadow-sm` / `--shadow` / `--shadow-lg` replace the
+  near-invisible previous values, layered under the existing `--hl-top` inset so
+  raised surfaces still read as a bevel, not a drop shadow. Exposed as
+  `--shadow-e1` / `-e2` / `-e3`.
+- **`--accent-wash` / `--accent-line`.** Primary actions stay graphite and blue
+  stays links-and-focus only, which left the accent with nowhere to appear at
+  rest. These two derived tints are that place: a selected nav row, an active
+  tab, a row hover.
+- **`--chart-4` / `--chart-5` re-pointed** off the old values to `#c98bd9` /
+  `#5cc8c8`, so the non-risk series stop colliding with the risk hues.
+- **Additive scale tokens.** `--step-*` (1.20 minor third, px-snapped) and
+  `--leading-*`, surfaced through `@theme` as opt-in `text-step-*` utilities.
+  Additive only — no existing `text-*` utility changes behaviour.
+- **`.eyebrow`** to 11px / weight 500 / `0.06em` tracking / `--text-2`. The old
+  `0.1em` at a lighter tone read as noise rather than as a label.
+- **`.seg-btn` selected state** gains a 2px brand underline
+  (`inset 0 -2px 0 var(--brand)`), so the segmented control shows which item is
+  selected by more than a slight ground change.
+
+Primary stays graphite. Every other class, the whole Quill block, and all
+component CSS are unchanged.
+
+### `src/components/sidebar.tsx`
+
+One line, in `NavRow`'s active-state class: `border-border bg-surface` →
+`border-[var(--accent-line)] bg-[var(--accent-wash)]`. This is the audit's one
+non-token change — it is what puts the accent on screen at rest.
+
+### Results
+
+```
+npm run lint    exit 0    ✖ 6 problems (0 errors, 6 warnings)   [pre-existing]
+npm run build   exit 0    16/16 static pages, all 23 routes
+npm test        exit 0    ℹ pass 17   ℹ fail 0
+```
+
+Tests are integration tests against a dev server on `:3000`; the run left no
+rows behind (the write-path cases all assert the guest is *blocked*, and
+`GET /api/contracts` returns `{"contracts":[]}` afterwards).
+
+**The Chrome extension was not connected in this session, so lint/build/test is
+the entire QA surface — none of this has been reviewed by eye.** The palette and
+contrast changes above are the kind that want a human look, particularly light
+mode, the risk pills against their new grounds, and the active nav row.

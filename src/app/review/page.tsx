@@ -394,12 +394,24 @@ function ReviewContent() {
 
     const text  = quill.getText();
     const match = findPassage(text, card.passage);
-    if (match) {
-      const length = match.end - match.start;
-      quill.deleteText(match.start, length);
-      quill.insertText(match.start, card.suggestion, { background: "var(--mark-applied)" });
-      prevHighlight.current = null;
+
+    // The flagged passage isn't in the document (AI paraphrased/truncated it, or
+    // the text was since edited). Do NOT silently mark this fixed — that would
+    // leave the risky clause in the contract while the UI claims it's resolved.
+    // Keep the card, tell the user, let them place the wording from the panel.
+    if (!match) {
+      setComputeError(
+        `Couldn't locate this passage in the document to replace it automatically. ` +
+        `Copy the suggested wording from the card and place it manually.`,
+      );
+      setActiveCardId(card.id);
+      return;
     }
+
+    const length = match.end - match.start;
+    quill.deleteText(match.start, length);
+    quill.insertText(match.start, card.suggestion, { background: "var(--mark-applied)" });
+    prevHighlight.current = null;
 
     const delta = quill.getContents();
 
@@ -1153,9 +1165,21 @@ function ReviewContent() {
                       {isOpen && (
                         <div className="flex flex-col gap-2.5 border-t border-border p-2.5">
                           <div>
-                            <p className="eyebrow mb-1">
-                              Suggested wording — for your review
-                            </p>
+                            <div className="mb-1 flex items-center justify-between">
+                              <p className="eyebrow">Suggested wording — for your review</p>
+                              <button
+                                type="button"
+                                className="text-[11px] text-text-3 transition-colors hover:text-foreground"
+                                onClick={() => {
+                                  navigator.clipboard?.writeText(card.suggestion).then(
+                                    () => setComputeError("Suggested wording copied to the clipboard."),
+                                    () => setComputeError("Couldn't copy — select the text manually."),
+                                  );
+                                }}
+                              >
+                                Copy
+                              </button>
+                            </div>
                             <p className="rounded-md border border-border bg-surface-2 p-2.5 text-[12.5px] leading-[1.6] text-foreground">
                               {card.suggestion}
                             </p>

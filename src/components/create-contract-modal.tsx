@@ -31,13 +31,18 @@ const CONTRACT_TYPES = [
   "Other",
 ];
 
-const JURISDICTIONS = ["UK", "US", "EU", "Germany", "India", "Australia", "Singapore", "Global"];
+// The product is Germany-only — every contract is grounded in German law. The
+// only user-facing choice is the language the draft is written in.
+type Language = "en" | "de";
+const LANGUAGES: { value: Language; label: string }[] = [
+  { value: "en", label: "English" },
+  { value: "de", label: "Deutsch" },
+];
 
-// Germany + a residential lease is drafted by the grounded RAG pipeline
-// (src/lib/rag), which needs the flat's commercial terms.
+// A residential lease is drafted by the grounded RAG pipeline (src/lib/rag),
+// which needs the flat's commercial terms. Jurisdiction is always Germany.
 const GERMAN_LEASE_TYPE = "Lease Agreement";
-const isGermanLease = (jurisdiction: string, contractType: string) =>
-  jurisdiction === "Germany" && contractType === GERMAN_LEASE_TYPE;
+const isGermanLease = (contractType: string) => contractType === GERMAN_LEASE_TYPE;
 
 type Props = {
   open: boolean;
@@ -47,7 +52,7 @@ type Props = {
     contractType: string;
     party1: string;
     party2: string;
-    jurisdiction: string;
+    language: Language;
     keyTerms: string;
     propertyAddress?: string;
     baseRentEur?: number;
@@ -62,14 +67,14 @@ export function CreateContractModal({ open, onClose, onGenerate, generating }: P
   const [contractType, setContractType] = useState("");
   const [party1,       setParty1]       = useState("");
   const [party2,       setParty2]       = useState("");
-  const [jurisdiction, setJurisdiction] = useState("UK");
+  const [language,     setLanguage]     = useState<Language>("de");
   const [keyTerms,     setKeyTerms]     = useState("");
   const [propertyAddress,   setPropertyAddress]   = useState("");
   const [baseRentEur,       setBaseRentEur]       = useState("");
   const [operatingCostsEur, setOperatingCostsEur] = useState("");
   const [depositEur,        setDepositEur]        = useState("");
 
-  const germanLease = isGermanLease(jurisdiction, contractType);
+  const germanLease = isGermanLease(contractType);
   const rentValue = Number(baseRentEur);
   const canGenerate =
     name.trim() && contractType && party1.trim() && party2.trim() &&
@@ -86,7 +91,7 @@ export function CreateContractModal({ open, onClose, onGenerate, generating }: P
       contractType,
       party1: party1.trim(),
       party2: party2.trim(),
-      jurisdiction,
+      language,
       keyTerms: keyTerms.trim(),
       ...(germanLease
         ? {
@@ -161,19 +166,24 @@ export function CreateContractModal({ open, onClose, onGenerate, generating }: P
             </div>
           </div>
 
-          {/* Jurisdiction */}
+          {/* Language — jurisdiction is always Germany; this only sets the
+              language the draft is written in. */}
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Jurisdiction</label>
-            <Select value={jurisdiction} onValueChange={(v) => setJurisdiction(v ?? "UK")}>
+            <label className="text-sm font-medium">Language</label>
+            <Select value={language} onValueChange={(v) => setLanguage((v as Language) ?? "de")}>
               <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {JURISDICTIONS.map(j => (
-                  <SelectItem key={j} value={j}>{j}</SelectItem>
+                {LANGUAGES.map(l => (
+                  <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground">
+              Grounded in German law either way. Deutsch keeps the contract in German;
+              English keeps the German statutory citations.
+            </p>
           </div>
 
           {/* German residential lease — grounded RAG drafting */}
@@ -233,7 +243,7 @@ export function CreateContractModal({ open, onClose, onGenerate, generating }: P
             <textarea
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none"
               rows={3}
-              placeholder="e.g. 2-year term, auto-renewal, liability cap at £50k, UK law applies…"
+              placeholder="e.g. 2-year term, auto-renewal, liability cap at €50k, place of jurisdiction Berlin…"
               value={keyTerms}
               onChange={e => setKeyTerms(e.target.value)}
             />

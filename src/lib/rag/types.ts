@@ -75,6 +75,12 @@ export type GenerateParams = {
   depositEur?: number;
   /** Extra client requirements, verbatim. */
   keyTerms?: string;
+  /**
+   * Output language for the drafted contract. Retrieval and legal grounding
+   * always stay in German; `"en"` only switches the language the contract is
+   * written in (statutory citations stay German). Default `"de"`.
+   */
+  language?: "en" | "de";
   /** Retrieval breadth (merged across sub-queries). Default 12. */
   topK?: number;
 };

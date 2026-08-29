@@ -8,6 +8,9 @@ import { readFileSync } from "node:fs";
 import { decide, secondsToWindowEnd } from "../src/lib/rate-limit-core.ts";
 
 // ── unit: decide() ────────────────────────────────────────────
+// decide() is pure window math; these limits are a local fixture, not the
+// app's LIMITS table. Since the guest tier was removed, LIMITS entries are
+// now a flat { hour, day } Pair keyed by Clerk user id (see src/lib/rate-limit.ts).
 const NOW = new Date("2026-08-28T10:30:00Z");
 const LIMITS = { hour: 10, day: 30 };
 
@@ -31,10 +34,16 @@ test("decide: day limit takes precedence over hour", () => {
   assert.equal(v.retryAfter, secondsToWindowEnd("day", NOW)); // to next UTC midnight
 });
 
-// ── integration: burst /api/refine as a guest ─────────────────
+// ── integration: burst /api/refine ────────────────────────────
+// NOTE: obsolete since the compute routes were hard auth-gated (src/proxy.ts) —
+// a signed-out POST to /api/refine now 401s at the proxy before the limiter
+// runs, so this burst can no longer exercise the rate limiter. Left in place
+// (it already only runs against a live dev server on :3000) pending a rewrite
+// that drives the burst with a signed-in Clerk session. Kept for reference:
+// the IP header below no longer influences bucketing (buckets are user-keyed).
 const BASE = process.env.TEST_BASE ?? "http://localhost:3000";
 const TEST_IP = "203.0.113.77"; // TEST-NET-3, won't collide with a real client
-const GUEST_HOUR_LIMIT = 10;    // LIMITS.refine.guest.hour
+const GUEST_HOUR_LIMIT = 10;    // legacy fixture; see NOTE above
 
 function dbUrl() {
   try {

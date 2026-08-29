@@ -4,17 +4,21 @@
 @import "@clerk/ui/themes/shadcn.css";
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   LEXORA DESIGN SYSTEM — dark-first
+   LEXORA DESIGN SYSTEM — dark-first  (theme refinement — see Theme Audit)
 
    Bare :root is the DARK palette. Light arrives two ways: via the OS
    preference (unless the user has explicitly chosen dark) and via an explicit
    [data-theme="light"] on <html>. [data-theme="dark"] re-affirms dark so the
    toggle wins in both directions.
 
-   Near-monochrome neutral surfaces, hairline borders with a soft inner top
-   highlight instead of drop shadows, generous radii, mono for keys / clause
-   refs / data. Colour is spent only on risk (brick / ochre / green) and a
-   single blue for links + focus. Primary actions are graphite, never blue.
+   Refinement: neutrals re-tempered a degree cool in BOTH themes (one system,
+   not two); the light ground moves to a faint cool paper so white cards
+   separate; the two quiet text tones (--text-2 / --text-3) are lifted over the
+   4.5:1 floor; risk -bg tints are deepened; a two-tier elevation replaces the
+   near-invisible shadows; --accent-wash / --accent-line give the accent
+   somewhere to work at rest. Primary actions stay graphite, never blue; blue
+   is still links + focus only. A modular type scale is exposed as additive
+   --step-* / --leading-* tokens (no existing utility changes).
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* `dark:` utilities follow the same three-way rule as the tokens, so shadcn
@@ -32,38 +36,42 @@
 
 :root {
   /* ── Raw palette — DARK is the base ──────────────────────────────────── */
-  --bg: #0b0b0c;
-  --surface: #151517;
-  --surface-2: #1b1b1e;
-  --surface-3: #212125;
-  --paper: #17171a; /* the document */
-  --border: #29292d;
-  --border-strong: #37373d;
+  --bg: #0b0c0e;
+  --surface: #17191d;
+  --surface-2: #20232a;
+  --surface-3: #2a2e37;
+  --paper: #141517; /* the document */
+  --border: #363a44;
+  --border-strong: #474c58;
 
-  --text: #f4f4f3;
-  --text-2: #a6a6a1;
-  --text-3: #6e6e68;
+  --text: #f3f5f7;
+  --text-2: #b7bbc4;
+  --text-3: #8c909b;
 
-  --brand: #6aa0ff; /* links + focus only */
-  --ring: #4c86f0;
+  --brand: #7da8ff; /* links + focus only */
+  --ring: #9dbeff;
 
-  --high: #e9827a;
-  --high-bg: #2a1a19;
-  --high-line: #4a2c29;
-  --med: #e0b05a;
-  --med-bg: #271f12;
-  --med-line: #45351c;
-  --low: #6fc49b;
-  --low-bg: #142219;
-  --low-line: #244736;
+  /* Accent used at rest — selected nav row, active tab, row hover. */
+  --accent-wash: color-mix(in oklab, var(--brand) 16%, var(--surface));
+  --accent-line: color-mix(in oklab, var(--brand) 40%, var(--border));
 
-  --btn-primary: linear-gradient(180deg, #efefea 0%, #dcdcd5 100%);
-  --btn-primary-tx: #1a1a17;
-  --btn-primary-solid: #e6e6e0;
+  --high: #ed928a;
+  --high-bg: #3a1e1b;
+  --high-line: #5a322d;
+  --med: #e4b76b;
+  --med-bg: #322612;
+  --med-line: #574420;
+  --low: #79cea6;
+  --low-bg: #16301f;
+  --low-line: #2e5a44;
 
-  --hl-top: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 12px 30px -12px rgba(0, 0, 0, 0.6);
+  --btn-primary: linear-gradient(180deg, #f0f1f3 0%, #dadbde 100%);
+  --btn-primary-tx: #17181b;
+  --btn-primary-solid: #e4e5e8;
+
+  --hl-top: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.45), 0 20px 48px -22px rgba(0, 0, 0, 0.6);
   --shadow-lg: 0 34px 80px -26px rgba(0, 0, 0, 0.72);
 
   --scrim: rgba(6, 6, 7, 0.62);
@@ -78,6 +86,21 @@
   --r-xl: 20px;
   --r-pill: 999px;
   --radius: var(--r);
+
+  /* ── Type scale — additive. 1.20 minor third, px-snapped. Available as
+     text-[length:var(--step-N)]; existing text-* utilities are unchanged. */
+  --step-eyebrow: 0.6875rem; /* 11 */
+  --step--2: 0.75rem; /* 12 */
+  --step--1: 0.8125rem; /* 13 */
+  --step-0: 0.9375rem; /* 15 — body */
+  --step-1: 1.0625rem; /* 17 */
+  --step-2: 1.25rem; /* 20 */
+  --step-3: 1.5625rem; /* 25 */
+  --step-4: 1.9375rem; /* 31 */
+  --step-5: 2.4375rem; /* 39 */
+  --leading-tight: 1.14;
+  --leading-snug: 1.35;
+  --leading-normal: 1.62;
 
   /* ── shadcn semantic tokens, mapped onto the palette above ───────────── */
   --background: var(--bg);
@@ -131,8 +154,8 @@
   --chart-1: var(--high);
   --chart-2: var(--med);
   --chart-3: var(--low);
-  --chart-4: var(--text-2);
-  --chart-5: var(--brand);
+  --chart-4: #c98bd9;
+  --chart-5: #5cc8c8;
 
   --sidebar: var(--surface-2);
   --sidebar-foreground: var(--text);
@@ -147,121 +170,132 @@
 /* ── LIGHT — mirrored override ────────────────────────────────────────── */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
-    --bg: #fafaf9;
+    --bg: #eef0f3;
     --surface: #ffffff;
-    --surface-2: #f4f4f3;
-    --surface-3: #eeeeed;
+    --surface-2: #f3f5f8;
+    --surface-3: #e7eaee;
     --paper: #ffffff;
-    --border: #e7e7e4;
-    --border-strong: #d9d9d5;
+    --border: #dbdfe5;
+    --border-strong: #c4cad2;
 
-    --text: #1a1a18;
-    --text-2: #5b5b57;
-    --text-3: #97978f;
+    --text: #1a1c20;
+    --text-2: #565c66;
+    --text-3: #71767f;
 
-    --brand: #2563eb;
-    --ring: #2563eb;
+    --brand: #2d63e8;
+    --ring: #2d63e8;
 
-    --high: #c4362f;
-    --high-bg: #fbedec;
-    --high-line: #e8c7c4;
-    --med: #b0740b;
-    --med-bg: #fbf2e3;
-    --med-line: #ebd6ae;
-    --low: #2f7d5b;
-    --low-bg: #e8f4ee;
-    --low-line: #bfe0d0;
+    --accent-wash: #eef2fe;
+    --accent-line: #c7d6fb;
 
-    --btn-primary: linear-gradient(180deg, #38382f 0%, #23231d 100%);
-    --btn-primary-tx: #fbfbf8;
-    --btn-primary-solid: #2d2d26;
+    --high: #b42318;
+    --high-bg: #fde7e5;
+    --high-line: #f2c4bf;
+    --med: #8f5b0b;
+    --med-bg: #fbeacf;
+    --med-line: #ecca90;
+    --low: #1f7a4d;
+    --low-bg: #e3f0e7;
+    --low-line: #b7dbc5;
 
-    --hl-top: inset 0 1px 0 rgba(255, 255, 255, 0.72);
-    --shadow-sm: 0 1px 2px rgba(20, 20, 18, 0.06);
-    --shadow: 0 1px 3px rgba(20, 20, 18, 0.07),
-      0 10px 26px -10px rgba(20, 20, 18, 0.14);
-    --shadow-lg: 0 30px 70px -24px rgba(20, 20, 18, 0.26);
+    --btn-primary: linear-gradient(180deg, #32333a 0%, #202127 100%);
+    --btn-primary-tx: #f9fafb;
+    --btn-primary-solid: #2a2b31;
 
-    --scrim: rgba(20, 20, 18, 0.28);
+    --hl-top: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    --shadow-sm: 0 1px 2px rgba(18, 22, 31, 0.05),
+      0 1px 3px rgba(18, 22, 31, 0.05);
+    --shadow: 0 4px 10px -2px rgba(18, 22, 31, 0.08),
+      0 16px 34px -12px rgba(18, 22, 31, 0.16);
+    --shadow-lg: 0 30px 70px -24px rgba(18, 22, 31, 0.24);
+
+    --scrim: rgba(18, 22, 31, 0.28);
 
     color-scheme: light;
   }
 }
 
 :root[data-theme="light"] {
-  --bg: #fafaf9;
+  --bg: #eef0f3;
   --surface: #ffffff;
-  --surface-2: #f4f4f3;
-  --surface-3: #eeeeed;
+  --surface-2: #f3f5f8;
+  --surface-3: #e7eaee;
   --paper: #ffffff;
-  --border: #e7e7e4;
-  --border-strong: #d9d9d5;
+  --border: #dbdfe5;
+  --border-strong: #c4cad2;
 
-  --text: #1a1a18;
-  --text-2: #5b5b57;
-  --text-3: #97978f;
+  --text: #1a1c20;
+  --text-2: #565c66;
+  --text-3: #71767f;
 
-  --brand: #2563eb;
-  --ring: #2563eb;
+  --brand: #2d63e8;
+  --ring: #2d63e8;
 
-  --high: #c4362f;
-  --high-bg: #fbedec;
-  --high-line: #e8c7c4;
-  --med: #b0740b;
-  --med-bg: #fbf2e3;
-  --med-line: #ebd6ae;
-  --low: #2f7d5b;
-  --low-bg: #e8f4ee;
-  --low-line: #bfe0d0;
+  --accent-wash: #eef2fe;
+  --accent-line: #c7d6fb;
 
-  --btn-primary: linear-gradient(180deg, #38382f 0%, #23231d 100%);
-  --btn-primary-tx: #fbfbf8;
-  --btn-primary-solid: #2d2d26;
+  --high: #b42318;
+  --high-bg: #fde7e5;
+  --high-line: #f2c4bf;
+  --med: #8f5b0b;
+  --med-bg: #fbeacf;
+  --med-line: #ecca90;
+  --low: #1f7a4d;
+  --low-bg: #e3f0e7;
+  --low-line: #b7dbc5;
 
-  --hl-top: inset 0 1px 0 rgba(255, 255, 255, 0.72);
-  --shadow-sm: 0 1px 2px rgba(20, 20, 18, 0.06);
-  --shadow: 0 1px 3px rgba(20, 20, 18, 0.07),
-    0 10px 26px -10px rgba(20, 20, 18, 0.14);
-  --shadow-lg: 0 30px 70px -24px rgba(20, 20, 18, 0.26);
+  --btn-primary: linear-gradient(180deg, #32333a 0%, #202127 100%);
+  --btn-primary-tx: #f9fafb;
+  --btn-primary-solid: #2a2b31;
 
-  --scrim: rgba(20, 20, 18, 0.28);
+  --hl-top: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  --shadow-sm: 0 1px 2px rgba(18, 22, 31, 0.05),
+    0 1px 3px rgba(18, 22, 31, 0.05);
+  --shadow: 0 4px 10px -2px rgba(18, 22, 31, 0.08),
+    0 16px 34px -12px rgba(18, 22, 31, 0.16);
+  --shadow-lg: 0 30px 70px -24px rgba(18, 22, 31, 0.24);
+
+  --scrim: rgba(18, 22, 31, 0.28);
 
   color-scheme: light;
 }
 
 :root[data-theme="dark"] {
-  --bg: #0b0b0c;
-  --surface: #151517;
-  --surface-2: #1b1b1e;
-  --surface-3: #212125;
-  --paper: #17171a;
-  --border: #29292d;
-  --border-strong: #37373d;
+  --bg: #0b0c0e;
+  --surface: #17191d;
+  --surface-2: #20232a;
+  --surface-3: #2a2e37;
+  --paper: #141517;
+  --border: #363a44;
+  --border-strong: #474c58;
 
-  --text: #f4f4f3;
-  --text-2: #a6a6a1;
-  --text-3: #6e6e68;
+  --text: #f3f5f7;
+  --text-2: #b7bbc4;
+  --text-3: #8c909b;
 
-  --brand: #6aa0ff;
-  --ring: #4c86f0;
+  --brand: #7da8ff;
+  --ring: #9dbeff;
 
-  --high: #e9827a;
-  --high-bg: #2a1a19;
-  --high-line: #4a2c29;
-  --med: #e0b05a;
-  --med-bg: #271f12;
-  --med-line: #45351c;
-  --low: #6fc49b;
-  --low-bg: #142219;
-  --low-line: #244736;
+  --accent-wash: color-mix(in oklab, var(--brand) 16%, var(--surface));
+  --accent-line: color-mix(in oklab, var(--brand) 40%, var(--border));
 
-  --btn-primary: linear-gradient(180deg, #efefea 0%, #dcdcd5 100%);
-  --btn-primary-tx: #1a1a17;
-  --btn-primary-solid: #e6e6e0;
+  --high: #ed928a;
+  --high-bg: #3a1e1b;
+  --high-line: #5a322d;
+  --med: #e4b76b;
+  --med-bg: #322612;
+  --med-line: #574420;
+  --low: #79cea6;
+  --low-bg: #16301f;
+  --low-line: #2e5a44;
 
-  --hl-top: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 12px 30px -12px rgba(0, 0, 0, 0.6);
+  --btn-primary: linear-gradient(180deg, #f0f1f3 0%, #dadbde 100%);
+  --btn-primary-tx: #17181b;
+  --btn-primary-solid: #e4e5e8;
+
+  --hl-top: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.45), 0 20px 48px -22px rgba(0, 0, 0, 0.6);
   --shadow-lg: 0 34px 80px -26px rgba(0, 0, 0, 0.72);
 
   --scrim: rgba(6, 6, 7, 0.62);
@@ -279,6 +313,20 @@
   --font-mono: var(--font-mono);
   --font-serif: var(--font-sans);
   --font-heading: var(--font-sans);
+
+  /* Modular scale — additive opt-in utilities (text-step-0 … / leading-*). */
+  --text-step-eyebrow: var(--step-eyebrow);
+  --text-step--2: var(--step--2);
+  --text-step--1: var(--step--1);
+  --text-step-0: var(--step-0);
+  --text-step-1: var(--step-1);
+  --text-step-2: var(--step-2);
+  --text-step-3: var(--step-3);
+  --text-step-4: var(--step-4);
+  --text-step-5: var(--step-5);
+  --leading-tight: var(--leading-tight);
+  --leading-snug: var(--leading-snug);
+  --leading-normal: var(--leading-normal);
 
   /* Surfaces & chrome */
   --color-sidebar-ring: var(--sidebar-ring);
@@ -301,6 +349,8 @@
   --color-destructive: var(--destructive);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
+  --color-accent-wash: var(--accent-wash);
+  --color-accent-line: var(--accent-line);
   --color-muted-foreground: var(--muted-foreground);
   --color-muted: var(--muted);
   --color-secondary-foreground: var(--secondary-foreground);
@@ -399,15 +449,17 @@
 }
 
 @layer components {
-  /* Eyebrow / metadata label — mono + uppercase + wide tracking marks
-     machine-derived values as distinct from human prose. */
+  /* Eyebrow / metadata label — mono + uppercase marks machine-derived values
+     as distinct from human prose. Lifted to 11px / medium / --text-2 and the
+     tracking dialled back from 0.1em so it stops reading as noise. */
   .eyebrow {
     font-family: var(--font-mono);
-    font-size: 0.625rem;
+    font-size: 0.6875rem;
+    font-weight: 500;
     line-height: 1.4;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--text-3);
+    color: var(--text-2);
   }
 
   /* Display type. No serif in this system — weight and negative tracking do
@@ -600,7 +652,9 @@
 
   /* Segmented control — one recessed track, the selected item raised out of
      it. The same object on the dashboard filter, the editor tabs and the
-     pricing billing switch, so a "pick one" always looks the same. */
+     pricing billing switch, so a "pick one" always looks the same. The
+     selected item now carries a 2px brand underline so the accent shows at
+     rest without a fill. */
   .seg {
     display: inline-flex;
     padding: 3px;
@@ -628,7 +682,7 @@
   .seg-btn[data-on="true"] {
     background: var(--surface);
     color: var(--text);
-    box-shadow: var(--hl-top), var(--shadow-sm);
+    box-shadow: inset 0 -2px 0 var(--brand), var(--hl-top), var(--shadow-sm);
   }
 
   /* Redline pair. */

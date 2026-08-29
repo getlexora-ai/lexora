@@ -88,7 +88,7 @@ function NavRow({ item, active }: { item: NavItem; active: boolean }) {
       className={cn(
         "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] transition-colors",
         active
-          ? "border border-border bg-surface px-2 py-[5px] font-semibold text-foreground shadow-e1"
+          ? "border border-[var(--accent-line)] bg-[var(--accent-wash)] px-2 py-[5px] font-semibold text-foreground shadow-e1"
           : "text-text-2 hover:bg-surface-3 hover:text-foreground"
       )}
     >

@@ -1,15 +1,17 @@
 "use client";
 
 import { Suspense, useState, useEffect } from "react";
-import { Upload, Pencil, Trash2, FlaskConical, Loader2, Sparkles, Lock } from "lucide-react";
+import {
+  Upload, Pencil, Trash2, FlaskConical, Loader2, Sparkles, Lock,
+  FileText, Shield, Clock,
+} from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { SignInButton, useUser } from "@clerk/nextjs";
 import { UploadModal } from "@/components/upload-modal";
 import { CreateContractModal } from "@/components/create-contract-modal";
+import { RdgNoticeBar } from "@/components/rdg-notice";
 import { fileStore } from "@/lib/file-store";
-import { analysisStore } from "@/lib/analysis-store";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -22,13 +24,16 @@ import {
   XAxis, CartesianGrid,
   ResponsiveContainer,
 } from "recharts";
+import { cn } from "@/lib/utils";
 
-// --- Colors ---
-const DOCS_COLOR   = "#6366f1"; // indigo
-const FIXES_COLOR  = "#10b981"; // emerald
-const HIGH_COLOR   = "#ef4444"; // red
-const MEDIUM_COLOR = "#f59e0b"; // amber
-const LOW_COLOR    = "#3b82f6"; // blue
+// --- Colors — the risk tokens, read live from CSS so the charts re-theme with
+// the toggle instead of being frozen to one palette. Charts are client-rendered
+// SVG, and var() resolves in SVG presentation attributes. ---
+const DOCS_COLOR   = "var(--text-2)";
+const FIXES_COLOR  = "var(--low)";
+const HIGH_COLOR   = "var(--high)";
+const MEDIUM_COLOR = "var(--med)";
+const LOW_COLOR    = "var(--low)";
 
 // --- Types ---
 type DocEntry  = { month: string; docs: number };
@@ -56,8 +61,129 @@ const riskConfig  = {
 const axisProps = {
   tickLine: false,
   axisLine: false,
-  tick: { fontSize: 11, fill: "#94a3b8" },
+  tick: { fontSize: 11, fill: "var(--text-3)" },
 } as const;
+
+const gridColor = "var(--border)";
+
+/** A contract is settled once every issue has been fixed or waved off. */
+function isResolved(c: Contract) {
+  return (
+    c.total_issues > 0 &&
+    c.issues_fixed + (c.issues_dismissed ?? 0) >= c.total_issues
+  );
+}
+
+const FILTERS = ["All", "In review", "Signed"] as const;
+type Filter = (typeof FILTERS)[number];
+
+/** Risk pill: tinted ground, hairline in its own hue, severity dot. */
+function RiskPill({ contract }: { contract: Contract }) {
+  if (isResolved(contract)) {
+    return (
+      <span className="pill pill-low">
+        <i />
+        Clear
+      </span>
+    );
+  }
+  const level = contract.risk_level;
+  if (!level) {
+    return (
+      <span className="pill pill-none">
+        <i />
+        —
+      </span>
+    );
+  }
+  return (
+    <span
+      className={cn(
+        "pill capitalize",
+        level === "high" && "pill-high",
+        level === "medium" && "pill-med",
+        level === "low" && "pill-low"
+      )}
+    >
+      <i />
+      {level}
+    </span>
+  );
+}
+
+/** Status dot + label, derived from the same predicate the pill uses. */
+function StatusDot({ contract }: { contract: Contract }) {
+  const settled = isResolved(contract);
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs text-text-2">
+      <span
+        className={cn(
+          "size-1.5 shrink-0 rounded-full",
+          settled ? "bg-risk-low" : "bg-risk-medium"
+        )}
+        aria-hidden
+      />
+      {settled ? "Resolved" : "In review"}
+    </span>
+  );
+}
+
+function Stat({
+  icon: Icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: typeof FileText;
+  label: string;
+  value: number | string;
+  tone?: "risk";
+}) {
+  return (
+    <div className="flex flex-col gap-[7px] rounded-xl border border-border bg-surface px-3.5 py-3.5 shadow-e1">
+      <span className="flex items-center gap-1.5 text-xs text-text-3">
+        <Icon className="size-3.5 shrink-0" aria-hidden />
+        {label}
+      </span>
+      <span
+        className={cn(
+          "text-2xl font-semibold tracking-[-0.03em] tabular-nums",
+          tone === "risk" && "text-risk-high"
+        )}
+        data-numeric
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+/** Card chrome shared by the three chart panels. */
+function ChartCard({
+  title,
+  meta,
+  legend,
+  children,
+}: {
+  title: string;
+  meta?: string;
+  legend?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <Card className="gap-0 overflow-hidden p-0">
+      {/* [.border-b]:pb-3 restates the primitive's bordered-header padding at
+          the density this bar wants — the variant selector outranks a plain
+          py-*, so it has to be answered in kind. */}
+      <CardHeader className="flex flex-row items-center justify-between gap-2.5 border-b border-border px-3.5 py-3 [.border-b]:pb-3">
+        <CardTitle className="text-[13.5px]">{title}</CardTitle>
+        {legend}
+        {meta && <span className="font-mono text-[11.5px] text-text-3">{meta}</span>}
+      </CardHeader>
+      <CardContent className="p-3.5">{children}</CardContent>
+    </Card>
+  );
+}
 
 const DUMMY_CONTRACT = {
   name: "Master Service Agreement — Test Corp",
@@ -129,6 +255,11 @@ function DashboardContent() {
   // --- Summary stats derived from real contracts ---
   const totalDocuments = contracts.length;
   const totalFixes     = contracts.reduce((s, c) => s + c.issues_fixed, 0);
+  const highRiskCount  = contracts.filter(c => c.risk_level === "high" && !isResolved(c)).length;
+  const openIssues     = contracts.reduce(
+    (s, c) => s + Math.max(0, c.total_issues - c.issues_fixed - (c.issues_dismissed ?? 0)),
+    0,
+  );
   const currentRisk    = {
     high:   contracts.filter(c => c.risk_level === "high").length,
     medium: contracts.filter(c => c.risk_level === "medium").length,
@@ -167,11 +298,17 @@ function DashboardContent() {
   const searchParams = useSearchParams();
   const [modalOpen, setModalOpen]           = useState(false);
   const [createOpen, setCreateOpen]         = useState(false);
+  // View-only filter over the contracts already in state — no fetch, no API.
+  const [filter, setFilter]                 = useState<Filter>("All");
 
-  // Auto-open generate modal when sidebar navigates here with ?generate=1
+  // Auto-open the matching modal when the sidebar navigates here with
+  // ?generate=1 or ?upload=1.
   useEffect(() => {
     if (searchParams.get("generate") === "1") {
       setCreateOpen(true);
+      router.replace("/dashboard");
+    } else if (searchParams.get("upload") === "1") {
+      setModalOpen(true);
       router.replace("/dashboard");
     }
   }, [searchParams, router]);
@@ -199,49 +336,54 @@ function DashboardContent() {
     setContracts(prev => prev.filter(c => c.id !== id));
   }
 
+  const visible = contracts.filter(c =>
+    filter === "All" ? true : filter === "Signed" ? isResolved(c) : !isResolved(c)
+  );
+
   return (
-    <div className="px-8 py-10 space-y-8 max-w-[1200px]">
+    <div className="flex w-full max-w-[1120px] flex-col gap-4.5 p-[clamp(16px,3vw,28px)]">
+      {/* Standing RDG notice — the first thing on the Contracts view, every time. */}
+      <RdgNoticeBar />
+
       {/* Guest banner — contracts can be analysed but not saved without an account */}
       {isLoaded && !isSignedIn && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-          <div className="flex items-center gap-2 text-sm text-amber-900">
-            <Lock className="h-4 w-4 shrink-0" />
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-risk-medium-line bg-risk-medium-soft px-3.5 py-2.5">
+          <div className="flex items-center gap-2 text-[13px] text-foreground">
+            <Lock className="size-4 shrink-0 text-risk-medium" />
             <span>You&apos;re browsing as a guest. You can analyse a contract, but saving requires an account.</span>
           </div>
           <SignInButton mode="modal">
-            <button className="rounded-md bg-amber-600 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-amber-700">
-              Sign in
-            </button>
+            <Button size="sm">Sign in</Button>
           </SignInButton>
         </div>
       )}
 
       {/* Header */}
-      <section className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div className="space-y-1.5">
-          <h1 className="text-3xl font-bold tracking-tight">
-            Contract Intelligence Overview
-          </h1>
-          <p className="text-muted-foreground">
-            Monitoring legal health and compliance risk across your portfolio.
+      <section className="flex flex-wrap items-end justify-between gap-3.5">
+        <div>
+          <h1 className="text-[21px] font-semibold tracking-[-0.02em]">Contracts</h1>
+          <p className="mt-1 text-[13px] text-text-2">
+            {totalDocuments} {totalDocuments === 1 ? "document" : "documents"}
+            {" · "}
+            {openIssues} {openIssues === 1 ? "clause" : "clauses"} flagged for a closer look
           </p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Button variant="outline" className="gap-2" onClick={seedTestData} disabled={seeding}>
-            {seeding ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
+        <div className="flex shrink-0 items-center gap-2">
+          <Button variant="outline" onClick={seedTestData} disabled={seeding}>
+            {seeding ? <Loader2 className="size-4 animate-spin" /> : <FlaskConical className="size-4" />}
             Seed test data
           </Button>
-          <Button variant="outline" className="gap-2" onClick={() => setCreateOpen(true)}>
-            <Sparkles className="h-4 w-4" />
-            Generate Contract
+          <Button variant="outline" onClick={() => setCreateOpen(true)}>
+            <Sparkles className="size-4" />
+            Generate
           </Button>
-          <Button className="gap-2" onClick={() => setModalOpen(true)}>
-            <Upload className="h-4 w-4" />
-            Upload Contract
+          <Button onClick={() => setModalOpen(true)}>
+            <Upload className="size-4" />
+            Upload
           </Button>
         </div>
         {seedError && (
-          <div className="w-full rounded-md border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700 break-all">
+          <div className="w-full rounded-lg border border-risk-high-line bg-risk-high-soft px-3.5 py-2 text-xs break-all text-risk-high">
             {seedError}
           </div>
         )}
@@ -321,150 +463,146 @@ function DashboardContent() {
         />
       </section>
 
-      {/* Top two stat charts */}
-      <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
-
-        {/* 1 — Documents scanned */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
-              Documents Scanned
-            </CardTitle>
-            <p className="text-3xl font-bold">{totalDocuments}</p>
-          </CardHeader>
-          <CardContent>
-            <ChartContainer config={docsConfig} className="h-[120px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={documentsData} barSize={20}>
-                  <defs>
-                    <linearGradient id="docsGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%"   stopColor={DOCS_COLOR} stopOpacity={1}   />
-                      <stop offset="100%" stopColor={DOCS_COLOR} stopOpacity={0.5} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="month" {...axisProps} />
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  <Bar dataKey="docs" fill="url(#docsGrad)" radius={[5, 5, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartContainer>
-          </CardContent>
-        </Card>
-
-        {/* 2 — Total legal fixes by AI */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
-              Total Legal Fixes by AI
-            </CardTitle>
-            <p className="text-3xl font-bold">{totalFixes}</p>
-          </CardHeader>
-          <CardContent>
-            <ChartContainer config={fixesConfig} className="h-[120px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={fixesData}>
-                  <defs>
-                    <linearGradient id="fixesGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor={FIXES_COLOR} stopOpacity={0.35} />
-                      <stop offset="95%" stopColor={FIXES_COLOR} stopOpacity={0}    />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="month" {...axisProps} />
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  <Area
-                    type="monotone"
-                    dataKey="fixes"
-                    stroke={FIXES_COLOR}
-                    strokeWidth={2.5}
-                    fill="url(#fixesGrad)"
-                    dot={false}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </ChartContainer>
-          </CardContent>
-        </Card>
+      {/* Stat row */}
+      <section className="grid grid-cols-2 gap-3 min-[720px]:grid-cols-4">
+        <Stat icon={FileText} label="Documents" value={totalDocuments} />
+        <Stat icon={Shield} label="Flagged, high" value={highRiskCount} tone="risk" />
+        <Stat icon={Sparkles} label="Suggestions applied" value={totalFixes} />
+        <Stat icon={Clock} label="Open issues" value={openIssues} />
       </section>
 
-      {/* 3 — Risk trends (full width) */}
-      <Card>
-        <CardHeader className="pb-2 flex flex-row items-start justify-between">
-          <div>
-            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
-              Risk Trends Over Time
-            </CardTitle>
-            <p className="text-sm text-muted-foreground mt-1">
-              High, medium, and low risk contracts — last 6 months
-            </p>
-          </div>
-          {/* Manual legend */}
-          <div className="flex items-center gap-5 text-xs font-medium">
+      {/* Two smaller series */}
+      <section className="grid grid-cols-1 gap-4.5 md:grid-cols-2">
+        <ChartCard title="Documents scanned" meta="last 6 months">
+          <ChartContainer config={docsConfig} className="h-[120px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={documentsData} barSize={20}>
+                <CartesianGrid vertical={false} stroke={gridColor} />
+                <XAxis dataKey="month" {...axisProps} />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Bar dataKey="docs" fill={DOCS_COLOR} fillOpacity={0.55} radius={[5, 5, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartContainer>
+        </ChartCard>
+
+        <ChartCard title="Suggestions applied" meta="last 6 months">
+          <ChartContainer config={fixesConfig} className="h-[120px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={fixesData}>
+                <defs>
+                  <linearGradient id="fixesGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor={FIXES_COLOR} stopOpacity={0.28} />
+                    <stop offset="95%" stopColor={FIXES_COLOR} stopOpacity={0}    />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid vertical={false} stroke={gridColor} />
+                <XAxis dataKey="month" {...axisProps} />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Area
+                  type="monotone"
+                  dataKey="fixes"
+                  stroke={FIXES_COLOR}
+                  strokeWidth={2.25}
+                  fill="url(#fixesGrad)"
+                  dot={false}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </ChartContainer>
+        </ChartCard>
+      </section>
+
+      {/* Portfolio risk — full width */}
+      <ChartCard
+        title="Portfolio risk — last 6 months"
+        legend={
+          <div className="flex gap-3.5 text-[11px] text-text-2">
             {[
               { label: `High (${currentRisk.high})`,     color: HIGH_COLOR   },
               { label: `Medium (${currentRisk.medium})`, color: MEDIUM_COLOR },
               { label: `Low (${currentRisk.low})`,       color: LOW_COLOR    },
             ].map(({ label, color }) => (
               <span key={label} className="flex items-center gap-1.5">
-                <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: color }} />
+                <i className="size-2 rounded-[2px]" style={{ background: color }} aria-hidden />
                 {label}
               </span>
             ))}
           </div>
-        </CardHeader>
-        <CardContent>
-          <ChartContainer config={riskConfig} className="h-[120px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={riskData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="month" {...axisProps} />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Line type="monotone" dataKey="high"   stroke={HIGH_COLOR}   strokeWidth={2} dot={{ r: 2.5, fill: HIGH_COLOR,   strokeWidth: 0 }} activeDot={{ r: 4 }} />
-                <Line type="monotone" dataKey="medium" stroke={MEDIUM_COLOR} strokeWidth={2} dot={{ r: 2.5, fill: MEDIUM_COLOR, strokeWidth: 0 }} activeDot={{ r: 4 }} />
-                <Line type="monotone" dataKey="low"    stroke={LOW_COLOR}    strokeWidth={2} dot={{ r: 2.5, fill: LOW_COLOR,    strokeWidth: 0 }} activeDot={{ r: 4 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </ChartContainer>
-        </CardContent>
-      </Card>
+        }
+      >
+        <ChartContainer config={riskConfig} className="h-[150px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={riskData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid vertical={false} stroke={gridColor} />
+              <XAxis dataKey="month" {...axisProps} />
+              <ChartTooltip content={<ChartTooltipContent />} />
+              <Line type="monotone" dataKey="high"   stroke={HIGH_COLOR}   strokeWidth={2.25} dot={{ r: 2.5, fill: HIGH_COLOR,   strokeWidth: 0 }} activeDot={{ r: 4 }} />
+              <Line type="monotone" dataKey="medium" stroke={MEDIUM_COLOR} strokeWidth={2.25} dot={{ r: 2.5, fill: MEDIUM_COLOR, strokeWidth: 0 }} activeDot={{ r: 4 }} />
+              <Line type="monotone" dataKey="low"    stroke={LOW_COLOR}    strokeWidth={2.25} dot={{ r: 2.5, fill: LOW_COLOR,    strokeWidth: 0 }} activeDot={{ r: 4 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </ChartContainer>
+      </ChartCard>
 
       {/* Contracts table */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base font-semibold">Saved Contracts</CardTitle>
+      <Card className="gap-0 overflow-hidden p-0">
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2.5 border-b border-border px-3.5 py-3 [.border-b]:pb-3">
+          <CardTitle className="text-[13.5px]">All contracts</CardTitle>
+          {/* The filter sits with the table it controls rather than in the page
+              head, so the control and its effect are never out of eyeshot. */}
+          <div className="seg" role="tablist" aria-label="Filter contracts">
+            {FILTERS.map(f => (
+              <button
+                key={f}
+                type="button"
+                role="tab"
+                aria-selected={filter === f}
+                className="seg-btn"
+                onClick={() => setFilter(f)}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
         </CardHeader>
-        <CardContent className="p-0">
+        <CardContent className="overflow-x-auto p-0">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="pl-6">Contract Name</TableHead>
+                <TableHead className="pl-3.5">Name</TableHead>
+                <TableHead>Type</TableHead>
                 <TableHead>Risk</TableHead>
                 <TableHead>Issues</TableHead>
-                <TableHead>Resolved</TableHead>
-                <TableHead>Saved</TableHead>
-                <TableHead className="pr-6 text-right">Actions</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Updated</TableHead>
+                <TableHead className="pr-3.5 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">
-                    <Loader2 className="inline h-4 w-4 animate-spin mr-2" />Loading contracts…
+                  <TableCell colSpan={7} className="py-10 text-center text-[13px] text-text-3">
+                    <span className="inline-flex items-center gap-2 font-mono text-xs">
+                      Analysing
+                      <span className="shimmer-track inline-block h-1 w-[46px]" aria-hidden />
+                    </span>
                   </TableCell>
                 </TableRow>
               )}
-              {!loading && contracts.length === 0 && (
+              {!loading && visible.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">
-                    No contracts yet — upload one or click &quot;Seed test data&quot; to try it out.
+                  <TableCell colSpan={7} className="py-10 text-center text-[13px] text-text-3">
+                    {contracts.length === 0
+                      ? "No contracts yet — upload one or hit “Seed test data” to try it out."
+                      : `Nothing in “${filter}”.`}
                   </TableCell>
                 </TableRow>
               )}
-              {contracts.map(contract => (
+              {visible.map(contract => (
                 <TableRow
                   key={contract.id}
-                  className="h-16 cursor-pointer hover:bg-muted/40 transition-colors"
+                  className="cursor-pointer"
                   onClick={() => {
                     if (editingId === contract.id) return;
                     router.push(
@@ -472,10 +610,10 @@ function DashboardContent() {
                     );
                   }}
                 >
-                  <TableCell className="pl-6 font-medium">
+                  <TableCell className="pl-3.5 font-medium">
                     {editingId === contract.id ? (
                       <input
-                        className="w-full rounded border border-border px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                        className="w-full rounded-sm border border-border-strong bg-surface-2 px-2 py-1 text-[13px] focus-visible:outline-none"
                         value={editName}
                         onChange={e => setEditName(e.target.value)}
                         onKeyDown={e => { if (e.key === "Enter") saveEdit(contract.id); }}
@@ -483,59 +621,48 @@ function DashboardContent() {
                         autoFocus
                       />
                     ) : (
-                      contract.name
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {(contract.issues_fixed + (contract.issues_dismissed ?? 0)) >= contract.total_issues && contract.total_issues > 0 ? (
-                      <Badge variant="outline" className="border-green-200 bg-green-50 text-green-700 hover:bg-green-50">
-                        No Risk
-                      </Badge>
-                    ) : (
-                      <Badge
-                        variant="outline"
-                        className={
-                          contract.risk_level === "high"
-                            ? "border-red-200 bg-red-50 text-red-700"
-                            : contract.risk_level === "medium"
-                            ? "border-amber-200 bg-amber-50 text-amber-700"
-                            : "border-blue-200 bg-blue-50 text-blue-700"
-                        }
-                      >
-                        {contract.risk_level ?? "—"}
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">{contract.total_issues}</TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {contract.issues_fixed + (contract.issues_dismissed ?? 0)} / {contract.total_issues}
-                    {(contract.issues_dismissed ?? 0) > 0 && (
-                      <span className="ml-1 text-xs text-muted-foreground/70">
-                        ({contract.issues_fixed} fixed, {contract.issues_dismissed} dismissed)
+                      <span className="flex items-center gap-2.5">
+                        <span className="grid size-6 shrink-0 place-items-center rounded-sm bg-surface-3 text-text-3">
+                          <FileText className="size-3.5" aria-hidden />
+                        </span>
+                        <span className="truncate">{contract.name}</span>
                       </span>
                     )}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
+                  <TableCell className="font-mono text-text-2">
+                    {contract.contract_type || "—"}
+                  </TableCell>
+                  <TableCell>
+                    <RiskPill contract={contract} />
+                  </TableCell>
+                  <TableCell className="font-mono text-text-2">
+                    {contract.issues_fixed + (contract.issues_dismissed ?? 0)}/{contract.total_issues}
+                  </TableCell>
+                  <TableCell>
+                    <StatusDot contract={contract} />
+                  </TableCell>
+                  <TableCell className="font-mono text-xs text-text-3">
                     {new Date(contract.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
                   </TableCell>
-                  <TableCell className="pr-6 text-right" onClick={e => e.stopPropagation()}>
+                  <TableCell className="pr-3.5 text-right" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1">
                       {editingId === contract.id ? (
                         <Button size="sm" onClick={() => saveEdit(contract.id)}>
                           Save
                         </Button>
                       ) : (
-                        <Button variant="ghost" size="icon" onClick={() => startEdit(contract)}>
-                          <Pencil className="h-4 w-4" />
+                        <Button variant="ghost" size="icon-sm" aria-label="Rename" onClick={() => startEdit(contract)}>
+                          <Pencil className="size-3.5" />
                         </Button>
                       )}
                       <Button
                         variant="ghost"
-                        size="icon"
-                        className="text-muted-foreground hover:text-destructive"
+                        size="icon-sm"
+                        aria-label="Delete"
+                        className="text-text-3 hover:text-risk-high"
                         onClick={() => deleteContract(contract.id)}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="size-3.5" />
                       </Button>
                     </div>
                   </TableCell>

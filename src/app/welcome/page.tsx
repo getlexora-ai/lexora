@@ -14,15 +14,24 @@ export default async function WelcomePage() {
   const name = user?.fullName ?? user?.firstName ?? "there";
 
   return (
-    <main className="flex flex-1 items-center justify-center p-6">
-      <div className="w-full max-w-md rounded-xl border bg-card p-8 text-center shadow-sm">
-        <CheckCircle2 className="mx-auto h-12 w-12 text-green-600" />
-        <h1 className="mt-4 text-xl font-semibold">You&apos;re signed in, {name} 🎉</h1>
+    <main className="relative flex flex-1 items-center justify-center overflow-hidden p-6">
+      <div
+        className="pointer-events-none absolute inset-0 -z-10"
+        style={{
+          background:
+            "radial-gradient(ellipse 60% 50% at 50% 0%, var(--brand-soft), transparent 65%)",
+        }}
+      />
+      <div className="w-full max-w-md panel p-8 text-center">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-risk-ok-line bg-risk-ok-soft">
+          <CheckCircle2 className="h-7 w-7 text-risk-ok" />
+        </div>
+        <h1 className="mt-5 text-xl font-semibold tracking-tight">You&apos;re signed in, {name}</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Clerk authentication is working end to end.
         </p>
 
-        <dl className="mt-6 space-y-2 rounded-lg bg-muted/50 p-4 text-left text-sm">
+        <dl className="mt-6 space-y-2 rounded-xl bg-muted/50 p-4 text-left text-sm">
           <div className="flex justify-between gap-4">
             <dt className="text-muted-foreground">Email</dt>
             <dd className="font-medium">{email}</dd>
@@ -35,7 +44,7 @@ export default async function WelcomePage() {
 
         <Link
           href="/dashboard"
-          className="mt-6 inline-block rounded-md bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          className="mt-6 inline-block rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/85"
         >
           Continue to dashboard
         </Link>

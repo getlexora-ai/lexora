@@ -81,7 +81,7 @@ export function UploadModal({ open, onClose, onAnalyze }: Props) {
       <DialogContent className="max-w-xl p-0 overflow-hidden">
         {/* Header */}
         <DialogHeader className="px-8 pt-8 pb-4">
-          <DialogTitle className="text-2xl font-bold">Upload Agreement</DialogTitle>
+          <DialogTitle className="text-2xl font-semibold tracking-tight">Upload Agreement</DialogTitle>
           <DialogDescription>
             Our AI will scan for liabilities, governing law, and key dates.
           </DialogDescription>
@@ -92,15 +92,15 @@ export function UploadModal({ open, onClose, onAnalyze }: Props) {
           <label
             className={`flex flex-col items-center gap-3 rounded-xl border-2 border-dashed p-10 text-center cursor-pointer transition-colors ${
               dragging
-                ? "border-primary bg-primary/5"
-                : "border-border hover:border-primary/60 bg-muted/30"
+                ? "border-brand bg-brand-soft"
+                : "border-border hover:border-brand/60 bg-muted/30"
             }`}
             onDragOver={e => { e.preventDefault(); setDragging(true); }}
             onDragLeave={() => setDragging(false)}
             onDrop={onDrop}
           >
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-background shadow-sm">
-              <CloudUpload className="h-7 w-7 text-primary" />
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-background shadow-e1">
+              <CloudUpload className="h-7 w-7 text-brand" />
             </div>
             <div>
               <p className="font-semibold text-foreground">Drop your contract here</p>
@@ -118,18 +118,18 @@ export function UploadModal({ open, onClose, onAnalyze }: Props) {
           {/* Selected Files */}
           {files.length > 0 && (
             <div>
-              <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">
+              <p className="eyebrow mb-3">
                 Selected Files
               </p>
               <div className="space-y-2">
                 {files.map(file => (
                   <div
                     key={file.id}
-                    className="flex items-center justify-between rounded-lg bg-muted/40 px-4 py-3"
+                    className="flex items-center justify-between rounded-lg border border-border bg-muted/40 px-4 py-3"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded bg-destructive/10">
-                        <FileText className="h-5 w-5 text-destructive" />
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-soft">
+                        <FileText className="h-5 w-5 text-brand" />
                       </div>
                       <div>
                         <p className="text-sm font-semibold leading-none">{file.name}</p>
@@ -152,9 +152,9 @@ export function UploadModal({ open, onClose, onAnalyze }: Props) {
 
           {/* Contract Type */}
           <div className="space-y-2">
-            <label className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+            <label className="eyebrow">
               Contract Type
-              <span className="ml-1 text-primary">— helps AI improve accuracy</span>
+              <span className="ml-1 text-brand normal-case tracking-normal">— helps AI improve accuracy</span>
             </label>
             <Select value={contractType} onValueChange={(v) => setContractType(v ?? "")}>
               <SelectTrigger>
@@ -174,8 +174,8 @@ export function UploadModal({ open, onClose, onAnalyze }: Props) {
           </div>
 
           {/* AI Enhancement Banner */}
-          <div className="flex items-start gap-4 rounded-lg bg-primary/5 border border-primary/15 px-4 py-3">
-            <Sparkles className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+          <div className="flex items-start gap-4 rounded-xl bg-brand-soft border border-brand-line px-4 py-3">
+            <Sparkles className="h-5 w-5 text-brand shrink-0 mt-0.5" />
             <div>
               <p className="text-sm font-semibold">AI Enhancement Active</p>
               <p className="text-xs text-muted-foreground mt-0.5">
@@ -189,8 +189,10 @@ export function UploadModal({ open, onClose, onAnalyze }: Props) {
             <Button variant="outline" className="flex-1" onClick={handleClose}>
               Cancel
             </Button>
+            {/* Default variant = graphite. Primary actions are never blue —
+                brand is reserved for links and focus. */}
             <Button
-              className="flex-[2] gap-2"
+              className="flex-[2]"
               disabled={files.length === 0}
               onClick={handleAnalyze}
             >

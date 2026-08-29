@@ -15,6 +15,19 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { analysisStore, RiskClause } from "@/lib/analysis-store";
 import { contractStore } from "@/lib/contract-store";
 import { cn } from "@/lib/utils";
+import { looksLikeMarkdown, markdownToHtml, stripPageSeparators } from "@/lib/markdown";
+
+/* Load contract text into Quill. Generated drafts / AI edits arrive as Markdown
+   and are rendered as real headings/bold/lists; plain extracted text (uploads)
+   is inserted as-is, only stripped of LLMWhisperer's `<<<` page markers. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function setDocText(quill: any, text: string) {
+  if (looksLikeMarkdown(text)) {
+    quill.setContents(quill.clipboard.convert({ html: markdownToHtml(text) }));
+  } else {
+    quill.setText(stripPageSeparators(text));
+  }
+}
 
 type Risk = "high" | "medium" | "low";
 
@@ -215,7 +228,7 @@ function ReviewContent() {
           if (dbContent.delta) {
             quill.setContents(dbContent.delta);
           } else if (dbContent.text) {
-            quill.setText(dbContent.text);
+            setDocText(quill, dbContent.text);
           }
           quill.history.clear();
         } else {
@@ -262,13 +275,13 @@ function ReviewContent() {
         quill.setContents(pending.delta);
         pendingDbContent.current = null;
       } else if (pending?.text) {
-        quill.setText(pending.text);
+        setDocText(quill, pending.text);
         pendingDbContent.current = null;
       } else if (diskResult?.delta) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         quill.setContents(diskResult.delta as any);
       } else if (result?.extractedText) {
-        quill.setText(result.extractedText);
+        setDocText(quill, result.extractedText);
       }
       quill.history.clear();
 
@@ -593,7 +606,7 @@ function ReviewContent() {
           ?? (res.ok ? (data.explanation ?? "Contract updated.")
                      : (data.message ?? "The assistant hit an error. Please try again."));
         if (data.updatedDocument && quillRef.current) {
-          quillRef.current.setText(data.updatedDocument);
+          setDocText(quillRef.current, data.updatedDocument);
           quillRef.current.history.clear();
           // Save updated delta to Supabase if we have a contractId
           if (contractId) {
@@ -863,9 +876,9 @@ function ReviewContent() {
               <div className="flex shrink-0 items-center gap-2 border-b border-border bg-risk-medium-soft px-4 py-1.5">
                 <span className="size-1.5 shrink-0 rounded-full bg-risk-medium" aria-hidden />
                 <span className="text-[11.5px] text-text-2">
-                  Clause highlighted in the document — use{" "}
-                  <b className="font-semibold text-foreground">Replace in document</b>{" "}
-                  on the card to apply the suggested wording.
+                  Clause highlighted in the document — hit{" "}
+                  <b className="font-semibold text-foreground">Apply fix</b>{" "}
+                  on the card to swap in the suggested wording.
                 </span>
               </div>
             )}
@@ -1127,17 +1140,18 @@ function ReviewContent() {
                         />
                       </button>
 
-                      <p
-                        className={cn(
-                          "px-2.5 pb-2.5 text-xs leading-[1.55] text-text-2",
-                          isOpen && "border-b border-border"
-                        )}
-                      >
+                      <p className="px-2.5 pb-2 text-xs leading-[1.55] text-text-2">
                         {card.issue}
                       </p>
 
+                      {!isOpen && (
+                        <p className="truncate px-2.5 pb-2.5 text-[11.5px] text-text-3">
+                          <span className="font-medium text-text-2">Fix:</span> {card.suggestion}
+                        </p>
+                      )}
+
                       {isOpen && (
-                        <div className="flex flex-col gap-2.5 p-2.5">
+                        <div className="flex flex-col gap-2.5 border-t border-border p-2.5">
                           <div>
                             <p className="eyebrow mb-1">
                               Suggested wording — for your review
@@ -1195,7 +1209,7 @@ function ReviewContent() {
                             </div>
                           )}
 
-                          {dismissingId === card.id ? (
+                          {dismissingId === card.id && (
                             <div>
                               <input
                                 autoFocus
@@ -1226,36 +1240,45 @@ function ReviewContent() {
                                 </Button>
                               </div>
                             </div>
-                          ) : (
-                            <div className="flex flex-wrap gap-1.5">
-                              <Button size="sm" onClick={() => handleReplace(card)}>
-                                <Check className="size-3.5" />
-                                Replace in document
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  if (isRefining) { setRefiningId(null); setRefineNote(""); }
-                                  else { setRefiningId(card.id); setRefineNote(""); }
-                                }}
-                              >
-                                <Wand2 className="size-3.5" />
-                                {isRefining ? "Cancel" : "Refine"}
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  setDismissingId(card.id);
-                                  setDismissReason("");
-                                  setRefiningId(null);
-                                }}
-                              >
-                                Dismiss
-                              </Button>
-                            </div>
                           )}
+                        </div>
+                      )}
+
+                      {/* Actions — always visible, so a fix can be applied
+                          without expanding the card. */}
+                      {dismissingId !== card.id && (
+                        <div className="flex gap-1.5 border-t border-border p-2.5">
+                          <Button
+                            size="sm"
+                            className="flex-1"
+                            onClick={() => handleReplace(card)}
+                          >
+                            <Check className="size-3.5" />
+                            Apply fix
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              if (isRefining) { setRefiningId(null); setRefineNote(""); }
+                              else { setActiveCardId(card.id); setRefiningId(card.id); setRefineNote(""); }
+                            }}
+                          >
+                            <Wand2 className="size-3.5" />
+                            {isRefining ? "Cancel" : "Refine"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              setActiveCardId(card.id);
+                              setDismissingId(card.id);
+                              setDismissReason("");
+                              setRefiningId(null);
+                            }}
+                          >
+                            Dismiss
+                          </Button>
                         </div>
                       )}
                     </div>

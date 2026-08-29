@@ -189,8 +189,10 @@ export function UploadModal({ open, onClose, onAnalyze }: Props) {
             <Button variant="outline" className="flex-1" onClick={handleClose}>
               Cancel
             </Button>
+            {/* Default variant = graphite. Primary actions are never blue —
+                brand is reserved for links and focus. */}
             <Button
-              className="flex-[2] gap-2 bg-brand text-brand-foreground hover:bg-brand/90"
+              className="flex-[2]"
               disabled={files.length === 0}
               onClick={handleAnalyze}
             >

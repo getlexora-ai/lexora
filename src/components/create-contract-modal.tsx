@@ -155,7 +155,9 @@ export function CreateContractModal({ open, onClose, onGenerate, generating }: P
             <Button variant="outline" onClick={onClose} disabled={generating}>
               Cancel
             </Button>
-            <Button onClick={handleSubmit} disabled={!canGenerate || generating} className="gap-2 bg-brand text-brand-foreground hover:bg-brand/90">
+            {/* Default variant = graphite. Primary actions are never blue —
+                brand is reserved for links and focus. */}
+            <Button onClick={handleSubmit} disabled={!canGenerate || generating}>
               {generating ? (
                 <><Loader2 className="h-4 w-4 animate-spin" />Generating…</>
               ) : (

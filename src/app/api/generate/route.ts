@@ -5,23 +5,32 @@ import { AppError, errorResponse } from "@/lib/errors";
 import { generateGermanRentalContract } from "@/lib/rag";
 import { QuotaExhaustedError } from "@/lib/rag/gemini";
 
+// The product is Germany-only: every contract is governed by German law. The
+// sole user-facing choice is the output language.
+type Language = "en" | "de";
+
 type GenerateBody = {
   contractType: string;
   party1: string;
   party2: string;
-  jurisdiction: string;
+  /** Output language for the draft. Jurisdiction is always Germany. */
+  language?: Language;
   keyTerms?: string;
-  // German residential-lease fields (only sent for jurisdiction "Germany" +
-  // contractType "Lease Agreement"); see src/lib/rag.
+  // German residential-lease fields (only sent for contractType "Lease
+  // Agreement"); see src/lib/rag.
   propertyAddress?: string;
   baseRentEur?: number;
   operatingCostsEur?: number;
   depositEur?: number;
 };
 
-/** Route German residential leases through the grounded RAG pipeline. */
+function normaliseLanguage(v: unknown): Language {
+  return v === "en" ? "en" : "de";
+}
+
+/** Route residential leases through the grounded German-law RAG pipeline. */
 function isGermanResidentialLease(b: GenerateBody): boolean {
-  return b.jurisdiction === "Germany" && b.contractType === "Lease Agreement";
+  return b.contractType === "Lease Agreement";
 }
 
 // Below this top-retrieval score the context is too weak to ground a draft on —
@@ -52,6 +61,7 @@ async function draftGermanLease(b: GenerateBody) {
       operatingCostsEur: num(b.operatingCostsEur),
       depositEur: num(b.depositEur),
       keyTerms: b.keyTerms?.trim() || undefined,
+      language: normaliseLanguage(b.language),
     },
     // Route generation through the app's LLM adapter so it shares the
     // AppError taxonomy, blockReason handling and retry policy.
@@ -73,7 +83,8 @@ export async function POST(req: NextRequest) {
     if (limited) return limited;
 
     const body = (await req.json()) as GenerateBody;
-    const { contractType, party1, party2, jurisdiction, keyTerms } = body;
+    const { contractType, party1, party2, keyTerms } = body;
+    const language = normaliseLanguage(body.language);
 
     if (isGermanResidentialLease(body)) {
       try {
@@ -90,16 +101,23 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const prompt = `You are a senior commercial contracts attorney. Draft a complete, professional ${contractType} between ${party1} and ${party2} governed by ${jurisdiction} law.
+    const langName = language === "en" ? "English" : "German (Deutsch)";
+    const prompt = `This contract is governed by German law (BGB, and HGB where the parties are merchants). It must be written in ${langName}.
+
+You are a senior German commercial contracts attorney (Rechtsanwalt). Draft a complete, professional ${contractType} between ${party1} and ${party2} under German law.
 
 ${keyTerms ? `Key requirements from the client:\n${keyTerms}\n` : ""}
 
 Requirements:
 - Write the full contract with all standard sections for this contract type
-- Use formal legal language appropriate for ${jurisdiction} jurisdiction
-- Include all standard clauses (definitions, obligations, term, termination, liability, governing law, etc.)
+- Use formal legal language appropriate for German law; cite the relevant BGB/HGB provisions where a clause depends on them (e.g. "(§ 309 BGB)")
+- Respect mandatory German law: AGB-Kontrolle (§§ 305–310 BGB), and any statutory limits that apply to this contract type
+- Include all standard clauses (definitions, obligations, term, termination, liability, governing law, etc.); governing law is German law with the place of jurisdiction in Germany
 - Make it ready to use — no placeholders like [INSERT], use reasonable standard terms
 - Format with numbered sections and clear headings
+${language === "en"
+  ? '- Write the contract in English, but keep German statutory citations verbatim (e.g. "§ 309 BGB") and give the German legal term in parentheses on first use'
+  : "- Write the contract in German"}
 - Return ONLY the contract text, no preamble or explanation
 
 Write the complete contract now:`;

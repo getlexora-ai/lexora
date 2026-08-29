@@ -21,7 +21,7 @@ export type GenerateOptions = {
  * The drafting request is broad, so retrieval runs as several focused sub-queries
  * (one per contract building block) that are merged. Each maps to a corpus doc.
  */
-function buildQueries(p: GenerateParams): string[] {
+export function buildQueries(p: GenerateParams): string[] {
   const qs = [
     "Aufbau und Pflichtinhalte eines Wohnraummietvertrags, Checkliste unwirksame Klauseln",
     "Kaution Höchstbetrag drei Nettokaltmieten Ratenzahlung getrennte Anlage § 551 BGB",
@@ -71,6 +71,25 @@ Strikte Regeln:
 - Antworte NUR mit dem Vertragstext, ohne Vorbemerkung.`;
 
 /**
+ * Appended to SYSTEM when the caller asks for an English draft. Retrieval and
+ * legal reasoning stay in German — only the emitted contract switches language,
+ * and every statutory citation stays in its German form.
+ */
+const ENGLISH_OUTPUT_INSTRUCTION = `
+
+SPRACHE DER AUSGABE / OUTPUT LANGUAGE: English.
+- Recherche und rechtliche Prüfung erfolgen weiterhin auf Grundlage des deutschen Rechts (BGB); nur der Vertragstext wird auf Englisch ausgegeben.
+- Write the residential lease contract in English.
+- Keep every German statutory citation verbatim and in German, e.g. "(§ 551 BGB)", "(§ 556 Abs. 3 BGB)".
+- On first use of a German legal term, give it in parentheses after the English wording, e.g. "security deposit (Kaution)", "operating costs (Betriebskosten)", "cosmetic repairs (Schönheitsreparaturen)".
+- Paragraph headings in English with the German term in parentheses, e.g. "§ 5 Security Deposit (Kaution)".`;
+
+/** Persona + rules for the drafting model, language-aware. */
+export function composeSystem(language: "en" | "de" = "de"): string {
+  return language === "en" ? SYSTEM + ENGLISH_OUTPUT_INSTRUCTION : SYSTEM;
+}
+
+/**
  * Draft a Germany-curated residential lease. Retrieval is grounded on the
  * pgvector store; generation is instructed to cite only what it was given.
  */
@@ -101,7 +120,11 @@ ${params.keyTerms ? `- Weitere Vorgaben des Mandanten: ${params.keyTerms}` : ""}
 
 Erstelle jetzt den vollständigen Wohnraummietvertrag.`;
 
-  const contract = await complete({ system: SYSTEM, prompt, maxTokens: 8192 });
+  const contract = await complete({
+    system: composeSystem(params.language),
+    prompt,
+    maxTokens: 8192,
+  });
 
   return {
     contract,

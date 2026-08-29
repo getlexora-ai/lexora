@@ -9,10 +9,10 @@ export async function POST(req: NextRequest) {
     const limited = await enforceRateLimit(req, "analyse");
     if (limited) return limited;
 
-    const { text } = await req.json() as { text: string };
+    const { text, language } = await req.json() as { text: string; language?: "en" | "de" };
     if (!text?.trim()) return NextResponse.json({ error: "No text provided" }, { status: 400 });
 
-    const issues = await analyseContract(text);
+    const issues = await analyseContract(text, language === "en" ? "en" : "de");
 
     const clauses: RiskClause[] = issues.map((c, i) => ({
       ...c,

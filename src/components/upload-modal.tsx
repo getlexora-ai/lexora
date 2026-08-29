@@ -83,7 +83,8 @@ export function UploadModal({ open, onClose, onAnalyze }: Props) {
         <DialogHeader className="px-8 pt-8 pb-4">
           <DialogTitle className="text-2xl font-semibold tracking-tight">Upload Agreement</DialogTitle>
           <DialogDescription>
-            Our AI will scan for liabilities, governing law, and key dates.
+            Our AI will scan for liabilities, governing law, and key dates. Analysis assumes
+            the contract is governed by German law (BGB, incl. AGB-Kontrolle §§ 305–310).
           </DialogDescription>
         </DialogHeader>
 

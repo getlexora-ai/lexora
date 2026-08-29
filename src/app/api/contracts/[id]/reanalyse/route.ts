@@ -19,12 +19,12 @@ export async function POST(req: NextRequest, { params }: Params) {
   const limited = await enforceRateLimit(req, "reanalyse");
   if (limited) return limited;
 
-  const { text } = await req.json() as { text: string };
+  const { text, language } = await req.json() as { text: string; language?: "en" | "de" };
   if (!text?.trim()) return NextResponse.json({ error: "No text provided" }, { status: 400 });
 
   let issues;
   try {
-    issues = await analyseContract(text);
+    issues = await analyseContract(text, language === "en" ? "en" : "de");
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 });
   }

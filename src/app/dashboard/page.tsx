@@ -400,7 +400,7 @@ function DashboardContent() {
           open={createOpen}
           onClose={() => setCreateOpen(false)}
           generating={generating}
-          onGenerate={async ({ name, contractType, party1, party2, jurisdiction, keyTerms, propertyAddress, baseRentEur, operatingCostsEur, depositEur }) => {
+          onGenerate={async ({ name, contractType, party1, party2, language, keyTerms, propertyAddress, baseRentEur, operatingCostsEur, depositEur }) => {
             setGenerating(true);
             try {
               // Step 1: generate the initial draft. German residential leases are
@@ -408,7 +408,7 @@ function DashboardContent() {
               const genRes = await fetch("/api/generate", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ contractType, party1, party2, jurisdiction, keyTerms, propertyAddress, baseRentEur, operatingCostsEur, depositEur }),
+                body: JSON.stringify({ contractType, party1, party2, language, keyTerms, propertyAddress, baseRentEur, operatingCostsEur, depositEur }),
               });
               const genData = await genRes.json();
               if (genRes.status === 429) {

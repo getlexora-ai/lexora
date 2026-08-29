@@ -2,33 +2,40 @@
 
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, ChevronRight, Sparkles, Send, Loader2, MessageSquare, Plus, X } from "lucide-react";
+import {
+  ArrowLeft, ChevronRight, Sparkles, Send, Loader2, MessageSquare,
+  Plus, X, Check, FileText, LayoutGrid, BookOpen, BarChart3, Settings,
+  Undo2, Wand2,
+} from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { RdgStrip } from "@/components/rdg-notice";
+import { BrandMark } from "@/components/brand-mark";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { analysisStore, RiskClause } from "@/lib/analysis-store";
 import { contractStore } from "@/lib/contract-store";
+import { cn } from "@/lib/utils";
 
 type Risk = "high" | "medium" | "low";
 
-const RISK_STYLES: Record<Risk, { border: string; badge: string; title: string; label: string }> = {
-  high: {
-    border: "border-l-risk-high",
-    badge: "bg-risk-high-soft border-risk-high-line text-risk-high",
-    title: "text-risk-high",
-    label: "High Risk",
-  },
-  medium: {
-    border: "border-l-risk-medium",
-    badge: "bg-risk-medium-soft border-risk-medium-line text-risk-medium",
-    title: "text-risk-medium",
-    label: "Medium Risk",
-  },
-  low: {
-    border: "border-l-risk-low",
-    badge: "bg-risk-low-soft border-risk-low-line text-risk-low",
-    title: "text-risk-low",
-    label: "Low Risk",
-  },
+/* Risk presentation. One pill object shared with the dashboard and the landing
+   demo, so a risk badge means the same thing wherever it appears. The left
+   border on a card is the same hue at full strength — the card's own severity
+   rail, echoing the tinted rail beside a flagged clause in the document. */
+const RISK_STYLES: Record<Risk, { rail: string; pill: string; label: string }> = {
+  high:   { rail: "border-l-risk-high",   pill: "pill-high", label: "High" },
+  medium: { rail: "border-l-risk-medium", pill: "pill-med",  label: "Medium" },
+  low:    { rail: "border-l-risk-low",    pill: "pill-low",  label: "Low" },
 };
+
+/* The left icon rail. Only Contracts leads anywhere today; the rest are the
+   shape of the workspace, marked as such rather than dead-linked. */
+const RAIL = [
+  { icon: LayoutGrid, label: "Home", href: "/dashboard" },
+  { icon: FileText, label: "Contracts", href: "/dashboard", on: true },
+  { icon: BookOpen, label: "Clause library" },
+  { icon: BarChart3, label: "Risk dashboard" },
+];
 
 const NAV_TABS = ["Review", "Compare", "History", "Approval"];
 
@@ -695,77 +702,117 @@ function ReviewContent() {
   const noData = !result && !contractId;
   const activeClause = clauses.find(c => c.id === activeCardId);
 
+
+  /* Risk counts for the chrome bar, from the clauses still pending. */
+  const riskCounts = (["high", "medium", "low"] as Risk[]).map(r => ({
+    r,
+    n: clauses.filter(c => c.type === r).length,
+  }));
+
+  /* The composer is shared by both panel tabs. Sending from the Review tab
+     switches to Ask AI first, so the answer is never written somewhere the
+     reader cannot see it. handleChat itself is untouched. */
+  function sendFromComposer() {
+    if (!chatInput.trim() || chatLoading) return;
+    setSidePanel("chat");
+    handleChat();
+  }
+
   return (
-    // h-[calc(100vh-4rem)]: full viewport minus the 64px Navbar above
-    // overflow-hidden: prevents page-level scroll so inner panels scroll independently
-    <div className="flex flex-col h-[calc(100vh-4rem)] overflow-hidden">
+    // h-dvh + overflow-hidden: the page itself never scrolls, so the document
+    // pane and the review panel scroll independently.
+    <div className="grid h-dvh grid-rows-[auto_auto_1fr] overflow-hidden">
       {computeError && (
-        <div className="fixed bottom-5 right-5 z-50 max-w-sm rounded-xl border border-risk-medium-line bg-risk-medium-soft px-4 py-3 text-sm text-foreground shadow-e3">
+        <div className="fixed right-5 bottom-5 z-50 max-w-sm rounded-xl border border-risk-medium-line bg-risk-medium-soft px-4 py-3 text-[13px] text-foreground shadow-e3">
           {computeError}
         </div>
       )}
-      {/* Sub-header */}
-      <header className="shrink-0 border-b border-border bg-background/80">
-        <div className="flex h-14 items-center justify-between px-6">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => router.push("/dashboard")}
-              className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors group"
-            >
-              <ArrowLeft className="h-4 w-4 group-hover:-translate-x-0.5 transition-transform" />
-              Back
-            </button>
-            <div className="h-4 w-px bg-border" />
-            <span className="text-sm font-semibold truncate max-w-[280px]">{fileName}</span>
-            {contractType && (
-              <span className="eyebrow rounded bg-muted px-2 py-1">
-                {contractType}
-              </span>
-            )}
-          </div>
 
-          <nav className="flex items-center gap-1">
-            {NAV_TABS.map(tab => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  activeTab === tab
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                }`}
-              >
-                {tab}
-              </button>
-            ))}
-          </nav>
+      {/* ══════════ chrome ══════════ */}
+      <header className="flex h-13 items-center gap-2.5 border-b border-border bg-[color-mix(in_oklab,var(--bg)_82%,transparent)] px-3.5 backdrop-blur-md">
+        <Button
+          variant="outline"
+          size="icon-sm"
+          aria-label="Back to dashboard"
+          onClick={() => router.push("/dashboard")}
+        >
+          <ArrowLeft className="size-3.5" />
+        </Button>
 
-          <div className="flex items-center gap-2">
-            <Button size="sm" className="gap-2 bg-brand text-brand-foreground hover:bg-brand/90">
-              <Sparkles className="h-4 w-4" />
-              Export Report
-            </Button>
-          </div>
+        <div className="flex min-w-0 items-center gap-2 text-[13px] font-semibold">
+          <span className="truncate">{fileName}</span>
+          {contractType && (
+            <span className="pill pill-none max-[680px]:hidden">
+              <i />
+              {contractType}
+            </span>
+          )}
+          <span className="inline-flex items-center gap-1.5 text-xs font-normal text-text-2 max-[680px]:hidden">
+            <span className="size-1.5 rounded-full bg-risk-medium" aria-hidden />
+            In review
+          </span>
         </div>
+
+        <span className="flex-1" />
+
+        {/* Live risk tally — the one number a reviewer wants without scrolling. */}
+        <div className="flex gap-1.5 max-[900px]:hidden">
+          {riskCounts.filter(({ n }) => n > 0).map(({ r, n }) => (
+            <span key={r} className={cn("pill", RISK_STYLES[r].pill)}>
+              <i />
+              {n} {RISK_STYLES[r].label}
+            </span>
+          ))}
+          {fixedCount > 0 && (
+            <span className="pill pill-low">
+              <i />
+              {fixedCount} applied
+            </span>
+          )}
+        </div>
+
+        <div className="seg max-[1180px]:hidden" role="tablist" aria-label="Document view">
+          {NAV_TABS.map(tab => (
+            <button
+              key={tab}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab}
+              className="seg-btn"
+              onClick={() => setActiveTab(tab)}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+
+        <Button size="sm" variant="outline">
+          Export
+        </Button>
       </header>
 
+      {/* Slim standing disclaimer, directly under the toolbar. */}
+      <RdgStrip />
+
       {noData ? (
-        <main className="flex-1 flex items-center justify-center">
-          <div className="text-center space-y-3">
-            <p className="text-muted-foreground text-sm">No analysis data found.</p>
-            <Button variant="outline" onClick={() => router.push("/dashboard")}>Back to Dashboard</Button>
+        <main className="flex items-center justify-center">
+          <div className="space-y-3 text-center">
+            <p className="text-[13px] text-text-3">No analysis data found.</p>
+            <Button variant="outline" onClick={() => router.push("/dashboard")}>
+              Back to dashboard
+            </Button>
           </div>
         </main>
       ) : activeTab !== "Review" ? (
-        <main className="flex-1 flex items-center justify-center">
-          <div className="text-center space-y-4">
-            <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mx-auto">
-              <Sparkles className="h-6 w-6 text-muted-foreground/50" />
+        <main className="flex items-center justify-center">
+          <div className="space-y-4 text-center">
+            <div className="mx-auto grid size-12 place-items-center rounded-full border border-border bg-surface-2">
+              <Sparkles className="size-5 text-text-3" />
             </div>
             <div className="space-y-1.5">
-              <h3 className="text-base font-semibold">{activeTab} — Coming Soon</h3>
-              <p className="text-sm text-muted-foreground max-w-xs">
-                This feature is on the roadmap and will be available in a future release.
+              <h3 className="text-[15px] font-semibold">{activeTab} — coming soon</h3>
+              <p className="max-w-xs text-[13px] text-text-2">
+                This part of the workspace is on the roadmap.
               </p>
             </div>
             <Button variant="outline" size="sm" onClick={() => setActiveTab("Review")}>
@@ -774,25 +821,62 @@ function ReviewContent() {
           </div>
         </main>
       ) : (
-        <div className="flex flex-1 min-h-0 overflow-hidden">
-          {/* Left: Quill editor */}
-          <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="grid min-h-0 grid-cols-1 min-[720px]:grid-cols-[52px_1fr] min-[1060px]:grid-cols-[52px_1fr_384px]">
+          {/* ══════════ left rail ══════════ */}
+          <nav className="hidden flex-col items-center gap-1 border-r border-border bg-surface-2 py-2.5 min-[720px]:flex">
+            <BrandMark size={26} className="mb-1.5" />
+            {RAIL.map(({ icon: Icon, label, href, on }) => {
+              const classes = cn(
+                "grid size-8.5 place-items-center rounded-md transition-colors",
+                on
+                  ? "border border-border bg-surface text-foreground shadow-e1"
+                  : "text-text-3 hover:bg-surface-3 hover:text-foreground"
+              );
+              return href ? (
+                <Link key={label} href={href} aria-label={label} className={classes}>
+                  <Icon className="size-4" aria-hidden />
+                </Link>
+              ) : (
+                <span
+                  key={label}
+                  aria-label={`${label} — coming soon`}
+                  aria-disabled
+                  className={cn(classes, "cursor-not-allowed opacity-60")}
+                >
+                  <Icon className="size-4" aria-hidden />
+                </span>
+              );
+            })}
+            <span className="flex-1" />
+            <span
+              aria-label="Settings — coming soon"
+              aria-disabled
+              className="grid size-8.5 cursor-not-allowed place-items-center rounded-md text-text-3 opacity-60"
+            >
+              <Settings className="size-4" aria-hidden />
+            </span>
+          </nav>
+
+          {/* ══════════ document ══════════ */}
+          <div className="flex min-w-0 flex-col overflow-hidden">
             {activeClause && (
-              <div className="border-b border-border bg-[var(--mark-focus)]/40 px-6 py-2 flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-[var(--mark-focus)] ring-1 ring-foreground/20 shrink-0" />
-                <span className="text-xs text-foreground font-medium">
-                  Clause highlighted — click &quot;Replace in doc&quot; on the card to apply fix
+              <div className="flex shrink-0 items-center gap-2 border-b border-border bg-risk-medium-soft px-4 py-1.5">
+                <span className="size-1.5 shrink-0 rounded-full bg-risk-medium" aria-hidden />
+                <span className="text-[11.5px] text-text-2">
+                  Clause highlighted in the document — use{" "}
+                  <b className="font-semibold text-foreground">Replace in document</b>{" "}
+                  on the card to apply the suggested wording.
                 </span>
               </div>
             )}
 
             {/* Quill mounts here — toolbar is injected above the ql-editor div */}
-            <div className="flex-1 relative overflow-hidden">
-              <div ref={containerRef} className="h-full flex flex-col overflow-hidden quill-host" />
+            <div className="relative flex-1 overflow-hidden">
+              <div ref={containerRef} className="quill-host flex h-full flex-col overflow-hidden" />
               {dbLoading && (
-                <div className="absolute inset-0 flex items-center justify-center bg-background/60 backdrop-blur-sm z-10">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                <div className="absolute inset-0 z-10 flex items-center justify-center bg-[color-mix(in_oklab,var(--bg)_60%,transparent)] backdrop-blur-sm">
+                  <div className="flex items-center gap-2 text-[13px] text-text-2">
+                    <Loader2 className="size-4 animate-spin" />
                     Loading contract…
                   </div>
                 </div>
@@ -806,38 +890,38 @@ function ReviewContent() {
                   onMouseDown={e => e.preventDefault()}
                 >
                   {!selectionRefineOpen ? (
-                    <div className="flex items-center gap-1 rounded-xl border border-border bg-popover shadow-e2 px-2 py-1.5">
+                    <div className="flex items-center gap-0.5 rounded-md border border-border-strong bg-surface p-[3px] shadow-e3">
                       <button
-                        className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium hover:bg-muted transition-colors"
+                        className="inline-flex items-center gap-1.5 rounded-sm px-2 py-1.5 text-xs font-medium transition-colors hover:bg-surface-2"
                         onClick={() => {
                           setSidePanel("chat");
                           setChatInput(`"${selectionToolbar.text.slice(0, 120)}${selectionToolbar.text.length > 120 ? "…" : ""}" — explain any legal risks in this passage.`);
                           setSelectionToolbar(null);
                         }}
                       >
-                        <MessageSquare className="h-3.5 w-3.5 text-brand" />
+                        <MessageSquare className="size-3.5" />
                         Ask AI
                       </button>
-                      <div className="w-px h-4 bg-border" />
+                      <span className="h-4 w-px bg-border" aria-hidden />
                       <button
-                        className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium hover:bg-muted transition-colors"
+                        className="inline-flex items-center gap-1.5 rounded-sm px-2 py-1.5 text-xs font-medium transition-colors hover:bg-surface-2"
                         onClick={() => setSelectionRefineOpen(true)}
                       >
-                        <Sparkles className="h-3.5 w-3.5 text-brand" />
+                        <Wand2 className="size-3.5" />
                         Refine
                       </button>
                     </div>
                   ) : (
-                    <div className="w-72 rounded-xl border border-border bg-popover shadow-e2 p-3 space-y-2">
+                    <div className="w-72 space-y-2 rounded-lg border border-border-strong bg-surface p-3 shadow-e3">
                       <p className="eyebrow">Refine selected text</p>
-                      <p className="text-xs text-muted-foreground line-clamp-2 italic">
+                      <p className="line-clamp-2 text-xs text-text-3 italic">
                         &ldquo;{selectionToolbar.text.slice(0, 100)}{selectionToolbar.text.length > 100 ? "…" : ""}&rdquo;
                       </p>
                       <textarea
                         autoFocus
                         rows={2}
                         placeholder="e.g. make it more founder-friendly, EU jurisdiction…"
-                        className="w-full rounded-lg border border-border bg-muted/30 px-2.5 py-1.5 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+                        className="w-full resize-none rounded-md border border-border-strong bg-surface-2 px-2.5 py-1.5 text-xs shadow-e-inset focus-visible:outline-none"
                         value={selectionRefineNote}
                         onChange={e => setSelectionRefineNote(e.target.value)}
                         onKeyDown={e => {
@@ -848,16 +932,15 @@ function ReviewContent() {
                       <div className="flex gap-2">
                         <Button
                           size="sm"
-                          className="flex-1 h-7 text-xs gap-1 bg-brand text-brand-foreground hover:bg-brand/90"
+                          className="flex-1"
                           disabled={selectionRefineLoading || !selectionRefineNote.trim()}
                           onClick={handleSelectionRefine}
                         >
-                          {selectionRefineLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                          {selectionRefineLoading ? <Loader2 className="size-3 animate-spin" /> : <Sparkles className="size-3" />}
                           {selectionRefineLoading ? "Refining…" : "Apply"}
                         </Button>
                         <Button
                           size="sm" variant="ghost"
-                          className="h-7 text-xs px-2"
                           onClick={() => { setSelectionToolbar(null); setSelectionRefineOpen(false); }}
                         >
                           Cancel
@@ -866,111 +949,87 @@ function ReviewContent() {
                     </div>
                   )}
                   {/* Arrow pointing down toward the selection */}
-                  <div className="w-2.5 h-2.5 rotate-45 border-b border-r bg-popover -mt-[5px] border-border shadow-sm" />
+                  <span
+                    className="-mt-[5px] size-2.5 rotate-45 border-r border-b border-border-strong bg-surface"
+                    aria-hidden
+                  />
                 </div>
               )}
             </div>
           </div>
 
-          {/* Right: AI panel */}
-          <aside className="w-[400px] border-l border-border flex flex-col bg-sidebar overflow-hidden">
-
-            {/* Panel header + tab toggle */}
-            <div className="px-5 py-3 border-b border-border bg-background shrink-0">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <h3 className="text-sm font-semibold tracking-tight">AI Analysis</h3>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {clauses.length} {clauses.length === 1 ? "issue" : "issues"} remaining
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-1.5 justify-end">
-                  {(["high", "medium", "low"] as Risk[]).map(r => {
-                    const count = clauses.filter(c => c.type === r).length;
-                    if (count === 0) return null;
-                    return (
-                      <span key={r} className={`rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${RISK_STYLES[r].badge}`}>
-                        {count} {r}
-                      </span>
-                    );
-                  })}
-                  {fixedCount > 0 && (
-                    <span className="rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-risk-ok-soft border-risk-ok-line text-risk-ok">
-                      {fixedCount} fixed by AI
-                    </span>
-                  )}
-                </div>
+          {/* ══════════ AI review panel ══════════ */}
+          <aside className="flex min-h-0 flex-col border-border bg-surface-2 max-[1059px]:col-span-full max-[1059px]:max-h-[62vh] max-[1059px]:border-t min-[1060px]:border-l">
+            {/* Panel head */}
+            <div className="flex shrink-0 flex-col gap-2.5 border-b border-border px-3.5 py-3">
+              <div className="flex items-center gap-2">
+                <h2 className="text-[13.5px] font-semibold">AI review</h2>
+                <span className="ml-auto font-mono text-[11px] text-text-3">
+                  {clauses.length} {clauses.length === 1 ? "issue" : "issues"}
+                  {riskCounts[0].n > 0 && ` · ${riskCounts[0].n} high`}
+                </span>
               </div>
-              {/* Tab toggle */}
-              <div className="flex rounded-lg border border-border bg-muted/40 p-0.5 gap-0.5">
-                {(["issues", "chat"] as const).map(tab => (
+
+              <div className="seg" role="tablist" aria-label="Review panel">
+                {([
+                  ["issues", "Review"],
+                  ["chat", "Ask AI"],
+                ] as const).map(([key, label]) => (
                   <button
-                    key={tab}
-                    onClick={() => setSidePanel(tab)}
-                    className={`flex-1 rounded-md py-1 text-xs font-semibold transition-colors capitalize ${
-                      sidePanel === tab
-                        ? "bg-background shadow-e1 text-foreground"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
+                    key={key}
+                    type="button"
+                    role="tab"
+                    aria-selected={sidePanel === key}
+                    className="seg-btn flex-1"
+                    onClick={() => setSidePanel(key)}
                   >
-                    {tab === "issues" ? "Issues" : "Ask AI"}
+                    {label}
                   </button>
                 ))}
               </div>
+
+              {sidePanel === "issues" && (
+                <div className="flex gap-1.5">
+                  {contractId && (
+                    <Button size="sm" disabled={reanalysing} onClick={handleReanalyse}>
+                      {reanalysing ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+                      {reanalysing ? "Analysing…" : "Re-analyse"}
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => { setAddingIssue(v => !v); setAddForm(emptyAddForm); }}
+                  >
+                    {addingIssue ? <X className="size-3.5" /> : <Plus className="size-3.5" />}
+                    {addingIssue ? "Cancel" : "Add issue"}
+                  </Button>
+                </div>
+              )}
             </div>
 
-            {/* Issues panel */}
+            {/* ── Issues ── */}
             {sidePanel === "issues" && (
-              <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-                {clauses.length === 0 && (
-                  <div className="text-center py-12 text-sm text-muted-foreground">
-                    All issues resolved.
-                  </div>
-                )}
-                {contractId && (
-                  <Button
-                    variant="outline"
-                    className="w-full gap-2 text-xs border-brand-line text-brand hover:bg-brand-soft"
-                    size="sm"
-                    disabled={reanalysing}
-                    onClick={handleReanalyse}
-                  >
-                    {reanalysing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                    {reanalysing ? "Analysing…" : "Re-analyse document"}
-                  </Button>
-                )}
-
-                {/* + Add issue — record a clause the AI missed */}
-                <Button
-                  variant="outline"
-                  className="w-full gap-2 text-xs"
-                  size="sm"
-                  onClick={() => { setAddingIssue(v => !v); setAddForm(emptyAddForm); }}
-                >
-                  {addingIssue ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-                  {addingIssue ? "Cancel" : "Add issue"}
-                </Button>
-
+              <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
                 {addingIssue && (
-                  <div className="rounded-xl border border-border bg-card shadow-e1 p-3 space-y-2">
-                    <p className="eyebrow">
-                      Add a missed issue
-                    </p>
+                  <div className="space-y-2 rounded-lg border border-border bg-surface p-3 shadow-e-inset">
+                    <p className="eyebrow">Add a missed issue</p>
                     <textarea
                       rows={2}
                       placeholder="Passage — paste the exact text from the document"
-                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+                      className="w-full resize-none rounded-md border border-border-strong bg-surface-2 px-2.5 py-2 text-xs shadow-e-inset focus-visible:outline-none"
                       value={addForm.passage}
                       onChange={e => setAddForm(f => ({ ...f, passage: e.target.value }))}
                     />
                     <input
                       placeholder="Clause title — e.g. Clause 7: Indemnification"
-                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                      className="w-full rounded-md border border-border-strong bg-surface-2 px-2.5 py-2 text-xs shadow-e-inset focus-visible:outline-none"
                       value={addForm.clause}
                       onChange={e => setAddForm(f => ({ ...f, clause: e.target.value }))}
                     />
                     <select
-                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                      aria-label="Risk level"
+                      className="w-full rounded-md border border-border-strong bg-surface-2 px-2.5 py-2 text-xs shadow-e-inset focus-visible:outline-none"
                       value={addForm.type}
                       onChange={e => setAddForm(f => ({ ...f, type: e.target.value as Risk }))}
                     >
@@ -979,22 +1038,22 @@ function ReviewContent() {
                       <option value="low">Low risk</option>
                     </select>
                     <input
-                      placeholder="Issue — what is legally problematic"
-                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                      placeholder="Issue — what is worth a closer look"
+                      className="w-full rounded-md border border-border-strong bg-surface-2 px-2.5 py-2 text-xs shadow-e-inset focus-visible:outline-none"
                       value={addForm.issue}
                       onChange={e => setAddForm(f => ({ ...f, issue: e.target.value }))}
                     />
                     <textarea
                       rows={2}
-                      placeholder="Suggested replacement clause"
-                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+                      placeholder="Suggested replacement wording"
+                      className="w-full resize-none rounded-md border border-border-strong bg-surface-2 px-2.5 py-2 text-xs shadow-e-inset focus-visible:outline-none"
                       value={addForm.suggestion}
                       onChange={e => setAddForm(f => ({ ...f, suggestion: e.target.value }))}
                     />
                     <div className="flex gap-2">
                       <Button
                         size="sm"
-                        className="flex-1 text-xs h-7 gap-1"
+                        className="flex-1"
                         disabled={
                           addLoading ||
                           !addForm.passage.trim() || !addForm.clause.trim() ||
@@ -1002,13 +1061,12 @@ function ReviewContent() {
                         }
                         onClick={handleAddIssue}
                       >
-                        {addLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+                        {addLoading ? <Loader2 className="size-3 animate-spin" /> : <Plus className="size-3" />}
                         {addLoading ? "Adding…" : "Add issue"}
                       </Button>
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="text-xs h-7 px-2"
                         onClick={() => { setAddingIssue(false); setAddForm(emptyAddForm); }}
                       >
                         Cancel
@@ -1017,184 +1075,235 @@ function ReviewContent() {
                   </div>
                 )}
 
+                {clauses.length === 0 && !addingIssue && (
+                  <div className="flex flex-col items-center gap-2 py-12 text-center">
+                    <Check className="size-5 text-risk-low" aria-hidden />
+                    <p className="text-[13px] text-text-2">Nothing left flagged.</p>
+                    <p className="text-[11.5px] text-text-3">
+                      Every issue has been applied or dismissed.
+                    </p>
+                  </div>
+                )}
+
                 {clauses.map(card => {
-                  const style    = RISK_STYLES[card.type as Risk];
-                  const isActive = card.id === activeCardId;
+                  const style      = RISK_STYLES[card.type as Risk];
+                  const isOpen     = card.id === activeCardId;
                   const isRefining = refiningId === card.id;
 
                   return (
                     <div
                       key={card.id}
-                      onClick={() => { if (!isRefining) setActiveCardId(isActive ? null : card.id); }}
-                      className={`rounded-xl border border-l-4 bg-card shadow-e1 cursor-pointer transition-shadow ${style.border} ${
-                        isActive ? "ring-2 ring-brand/30 shadow-e2" : "hover:shadow-e2"
-                      }`}
+                      className={cn(
+                        "overflow-hidden rounded-lg border border-l-[3px] border-border bg-surface shadow-e-inset",
+                        style.rail
+                      )}
                     >
-                      <div className="px-4 pt-4 pb-3">
-                        <span className={`rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${style.badge}`}>
+                      {/* Header — clicking it both opens the card and highlights
+                          the passage in the document (one existing handler). */}
+                      <button
+                        type="button"
+                        aria-expanded={isOpen}
+                        className="flex w-full items-center gap-2 px-2.5 py-2.5 text-left"
+                        onClick={() => { if (!isRefining) setActiveCardId(isOpen ? null : card.id); }}
+                      >
+                        <span className={cn("pill shrink-0", style.pill)}>
+                          <i />
                           {style.label}
                         </span>
+                        <span className="truncate text-[12.5px] font-semibold">
+                          {card.clause}
+                        </span>
                         {card.source === "user" && (
-                          <span className="ml-1.5 rounded border border-border bg-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                          <span className="shrink-0 rounded-full border border-border px-1.5 font-mono text-[9px] tracking-[0.05em] text-text-3 uppercase">
                             Added by you
                           </span>
                         )}
-                        <h4 className={`text-sm font-semibold mt-2 mb-1 ${style.title}`}>{card.clause}</h4>
-                        <p className="text-xs text-muted-foreground mb-2">{card.issue}</p>
+                        <ChevronRight
+                          className={cn(
+                            "ml-auto size-3.5 shrink-0 text-text-3 transition-transform",
+                            isOpen && "rotate-90"
+                          )}
+                          aria-hidden
+                        />
+                      </button>
 
-                        <div className="rounded-lg bg-muted/50 border border-border px-3 py-2.5 mb-3">
-                          <p className="eyebrow mb-1.5">
-                            Recommended Clause
-                          </p>
-                          <p className="text-xs text-foreground leading-5">{card.suggestion}</p>
-                        </div>
+                      <p
+                        className={cn(
+                          "px-2.5 pb-2.5 text-xs leading-[1.55] text-text-2",
+                          isOpen && "border-b border-border"
+                        )}
+                      >
+                        {card.issue}
+                      </p>
 
-                        {/* Refine input — shown when refine is open for this card */}
-                        {isRefining && (
-                          <div className="mb-3" onClick={e => e.stopPropagation()}>
-                            <textarea
-                              autoFocus
-                              rows={2}
-                              placeholder="e.g. we're a UK company, make it more founder-friendly…"
-                              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-ring"
-                              value={refineNote}
-                              onChange={e => setRefineNote(e.target.value)}
-                              onKeyDown={e => {
-                                if (e.key === "Enter" && !e.shiftKey) {
-                                  e.preventDefault();
-                                  handleRefine(card);
-                                }
-                                if (e.key === "Escape") { setRefiningId(null); setRefineNote(""); }
-                              }}
-                            />
-                            <div className="flex gap-2 mt-1.5">
-                              <Button
-                                size="sm"
-                                className="flex-1 text-xs h-7 gap-1 bg-brand text-brand-foreground hover:bg-brand/90"
-                                disabled={refineLoading || !refineNote.trim()}
-                                onClick={e => { e.stopPropagation(); handleRefine(card); }}
-                              >
-                                {refineLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                                {refineLoading ? "Refining…" : "Refine"}
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="text-xs h-7 px-2"
-                                onClick={e => { e.stopPropagation(); setRefiningId(null); setRefineNote(""); }}
-                              >
-                                Cancel
-                              </Button>
+                      {isOpen && (
+                        <div className="flex flex-col gap-2.5 p-2.5">
+                          <div>
+                            <p className="eyebrow mb-1">
+                              Suggested wording — for your review
+                            </p>
+                            <p className="rounded-md border border-border bg-surface-2 p-2.5 text-[12.5px] leading-[1.6] text-foreground">
+                              {card.suggestion}
+                            </p>
+                          </div>
+
+                          {/* − old / + new, so the change is legible before it is made. */}
+                          <div className="overflow-hidden rounded-md border border-border font-mono text-[11px] leading-[1.7]">
+                            <div className="bg-risk-high-soft px-2.5 py-1 text-risk-high">
+                              − {card.passage}
+                            </div>
+                            <div className="bg-risk-low-soft px-2.5 py-1 text-risk-low">
+                              + {card.suggestion}
                             </div>
                           </div>
-                        )}
 
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="flex-1 text-xs h-8 gap-1"
-                            onClick={e => { e.stopPropagation(); handleReplace(card); }}
-                          >
-                            <ChevronRight className="h-3.5 w-3.5" />
-                            Replace in doc
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant={isRefining ? "secondary" : "default"}
-                            className={`flex-1 text-xs h-8 gap-1 ${isRefining ? "" : "bg-brand text-brand-foreground hover:bg-brand/90"}`}
-                            onClick={e => {
-                              e.stopPropagation();
-                              if (isRefining) { setRefiningId(null); setRefineNote(""); }
-                              else { setRefiningId(card.id); setRefineNote(""); }
-                            }}
-                          >
-                            <Sparkles className="h-3.5 w-3.5" />
-                            {isRefining ? "Cancel" : "Refine"}
-                          </Button>
-                        </div>
+                          {isRefining && (
+                            <div>
+                              <textarea
+                                autoFocus
+                                rows={2}
+                                placeholder="e.g. we're a UK company, make it more founder-friendly…"
+                                className="w-full resize-none rounded-md border border-border-strong bg-surface-2 px-2.5 py-2 text-xs shadow-e-inset focus-visible:outline-none"
+                                value={refineNote}
+                                onChange={e => setRefineNote(e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === "Enter" && !e.shiftKey) {
+                                    e.preventDefault();
+                                    handleRefine(card);
+                                  }
+                                  if (e.key === "Escape") { setRefiningId(null); setRefineNote(""); }
+                                }}
+                              />
+                              <div className="mt-1.5 flex gap-2">
+                                <Button
+                                  size="sm"
+                                  className="flex-1"
+                                  disabled={refineLoading || !refineNote.trim()}
+                                  onClick={() => handleRefine(card)}
+                                >
+                                  {refineLoading ? <Loader2 className="size-3 animate-spin" /> : <Sparkles className="size-3" />}
+                                  {refineLoading ? "Refining…" : "Refine"}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => { setRefiningId(null); setRefineNote(""); }}
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            </div>
+                          )}
 
-                        {/* Not an issue — dismiss a false positive */}
-                        {dismissingId === card.id ? (
-                          <div className="mt-2" onClick={e => e.stopPropagation()}>
-                            <input
-                              autoFocus
-                              placeholder="Why isn't this an issue? (optional)"
-                              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-                              value={dismissReason}
-                              onChange={e => setDismissReason(e.target.value)}
-                              onKeyDown={e => {
-                                if (e.key === "Enter") { e.preventDefault(); handleDismiss(card, dismissReason.trim()); }
-                                if (e.key === "Escape") { setDismissingId(null); setDismissReason(""); }
-                              }}
-                            />
-                            <div className="flex gap-2 mt-1.5">
+                          {dismissingId === card.id ? (
+                            <div>
+                              <input
+                                autoFocus
+                                placeholder="Why isn't this an issue? (optional)"
+                                className="w-full rounded-md border border-border-strong bg-surface-2 px-2.5 py-2 text-xs shadow-e-inset focus-visible:outline-none"
+                                value={dismissReason}
+                                onChange={e => setDismissReason(e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === "Enter") { e.preventDefault(); handleDismiss(card, dismissReason.trim()); }
+                                  if (e.key === "Escape") { setDismissingId(null); setDismissReason(""); }
+                                }}
+                              />
+                              <div className="mt-1.5 flex gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="flex-1"
+                                  onClick={() => handleDismiss(card, dismissReason.trim())}
+                                >
+                                  Confirm — not an issue
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => { setDismissingId(null); setDismissReason(""); }}
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex flex-wrap gap-1.5">
+                              <Button size="sm" onClick={() => handleReplace(card)}>
+                                <Check className="size-3.5" />
+                                Replace in document
+                              </Button>
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="flex-1 text-xs h-7 gap-1"
-                                onClick={e => { e.stopPropagation(); handleDismiss(card, dismissReason.trim()); }}
+                                onClick={() => {
+                                  if (isRefining) { setRefiningId(null); setRefineNote(""); }
+                                  else { setRefiningId(card.id); setRefineNote(""); }
+                                }}
                               >
-                                Confirm — not an issue
+                                <Wand2 className="size-3.5" />
+                                {isRefining ? "Cancel" : "Refine"}
                               </Button>
                               <Button
                                 size="sm"
-                                variant="ghost"
-                                className="text-xs h-7 px-2"
-                                onClick={e => { e.stopPropagation(); setDismissingId(null); setDismissReason(""); }}
+                                variant="outline"
+                                onClick={() => {
+                                  setDismissingId(card.id);
+                                  setDismissReason("");
+                                  setRefiningId(null);
+                                }}
                               >
-                                Cancel
+                                Dismiss
                               </Button>
                             </div>
-                          </div>
-                        ) : (
-                          <button
-                            className="mt-2 flex w-full items-center justify-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
-                            onClick={e => {
-                              e.stopPropagation();
-                              setDismissingId(card.id);
-                              setDismissReason("");
-                              setRefiningId(null);
-                            }}
-                          >
-                            <X className="h-3 w-3" />
-                            Not an issue
-                          </button>
-                        )}
-                      </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
 
-                {/* Dismissed clauses — collapsed by default */}
+                {/* Dismissed — collapsed by default */}
                 {dismissedClauses.length > 0 && (
-                  <div className="pt-2 border-t border-border">
+                  <div className="mt-1">
                     <button
-                      className="flex w-full items-center justify-between py-1 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                      type="button"
+                      aria-expanded={showDismissed}
+                      className="flex w-full items-center gap-2 rounded-lg border border-dashed border-border-strong px-2.5 py-2.5 text-xs text-text-3 transition-colors hover:text-foreground"
                       onClick={() => setShowDismissed(v => !v)}
                     >
-                      <span>Dismissed ({dismissedClauses.length})</span>
-                      <ChevronRight className={`h-3.5 w-3.5 transition-transform ${showDismissed ? "rotate-90" : ""}`} />
+                      <ChevronRight
+                        className={cn("size-3.5 transition-transform", showDismissed && "rotate-90")}
+                        aria-hidden
+                      />
+                      {dismissedClauses.length} dismissed{" "}
+                      {dismissedClauses.length === 1 ? "issue" : "issues"}
                     </button>
+
                     {showDismissed && (
                       <div className="mt-2 space-y-2">
                         {dismissedClauses.map(card => (
-                          <div key={card.id} className="rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+                          <div
+                            key={card.id}
+                            className="rounded-lg border border-border bg-surface px-2.5 py-2.5"
+                          >
                             <div className="flex items-start justify-between gap-2">
-                              <p className="text-xs font-semibold text-muted-foreground line-through">{card.clause}</p>
+                              <p className="text-xs font-semibold text-text-3 line-through">
+                                {card.clause}
+                              </p>
                               {card.source === "user" && (
-                                <span className="shrink-0 rounded border border-border bg-background px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-muted-foreground">
+                                <span className="shrink-0 rounded-full border border-border px-1.5 font-mono text-[9px] tracking-[0.05em] text-text-3 uppercase">
                                   Yours
                                 </span>
                               )}
                             </div>
-                            <p className="text-[11px] text-muted-foreground/70 mt-0.5">{card.issue}</p>
+                            <p className="mt-0.5 text-[11px] text-text-3">{card.issue}</p>
                             <Button
-                              size="sm"
+                              size="xs"
                               variant="ghost"
-                              className="mt-1.5 h-6 text-[11px] px-2"
+                              className="mt-1.5"
                               onClick={() => handleRestore(card)}
                             >
+                              <Undo2 className="size-3" />
                               Restore
                             </Button>
                           </div>
@@ -1206,69 +1315,73 @@ function ReviewContent() {
               </div>
             )}
 
-            {/* Ask AI chat panel */}
+            {/* ── Ask AI ── */}
             {sidePanel === "chat" && (
-              <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-                <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-                  {chatHistory.length === 0 && (
-                    <div className="text-center py-10 space-y-2">
-                      <Sparkles className="h-6 w-6 mx-auto text-brand/50" />
-                      <p className="text-xs text-muted-foreground">Ask anything about this contract.</p>
-                      <p className="text-[11px] text-muted-foreground/60">e.g. &ldquo;What are my termination rights?&rdquo; or &ldquo;Is this auto-renewal clause standard?&rdquo;</p>
-                    </div>
-                  )}
-                  {chatHistory.map((msg, i) => (
-                    <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                      <div className={`max-w-[85%] rounded-xl px-3 py-2 text-xs leading-5 ${
-                        msg.role === "user"
-                          ? "bg-brand text-brand-foreground"
-                          : "bg-background border border-border text-foreground"
-                      }`}>
-                        {msg.content}
-                      </div>
-                    </div>
-                  ))}
-                  {chatLoading && (
-                    <div className="flex justify-start">
-                      <div className="bg-background border border-border rounded-xl px-3 py-2">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                      </div>
-                    </div>
-                  )}
-                  <div ref={chatBottomRef} />
-                </div>
-
-                {/* Chat input */}
-                <div className="shrink-0 border-t border-border bg-background px-3 py-3">
-                  <div className="flex items-end gap-2">
-                    <textarea
-                      rows={2}
-                      placeholder="Ask about this contract…"
-                      className="flex-1 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-ring"
-                      value={chatInput}
-                      onChange={e => setChatInput(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault();
-                          handleChat();
-                        }
-                      }}
-                    />
-                    <Button
-                      size="icon"
-                      className="h-9 w-9 shrink-0 bg-brand text-brand-foreground hover:bg-brand/90"
-                      disabled={chatLoading || !chatInput.trim()}
-                      onClick={handleChat}
-                    >
-                      {chatLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                    </Button>
+              <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
+                {chatHistory.length === 0 && (
+                  <div className="space-y-2 py-10 text-center">
+                    <Sparkles className="mx-auto size-5 text-text-3" />
+                    <p className="text-xs text-text-2">Ask anything about this contract.</p>
+                    <p className="text-[11px] text-text-3">
+                      e.g. &ldquo;What are my termination rights?&rdquo; or &ldquo;Is this
+                      auto-renewal clause standard?&rdquo;
+                    </p>
                   </div>
-                </div>
+                )}
+                {chatHistory.map((msg, i) => (
+                  <div key={i} className={cn("flex", msg.role === "user" ? "justify-end" : "justify-start")}>
+                    <div
+                      className={cn(
+                        "max-w-[85%] rounded-lg px-3 py-2 text-xs leading-5",
+                        msg.role === "user"
+                          ? "btn-graphite"
+                          : "border border-border bg-surface text-foreground shadow-e-inset"
+                      )}
+                    >
+                      {msg.content}
+                    </div>
+                  </div>
+                ))}
+                {chatLoading && (
+                  <div className="flex justify-start">
+                    <div className="rounded-lg border border-border bg-surface px-3 py-2 shadow-e-inset">
+                      <Loader2 className="size-3.5 animate-spin text-text-3" />
+                    </div>
+                  </div>
+                )}
+                <div ref={chatBottomRef} />
               </div>
             )}
+
+            {/* Persistent composer — present on both tabs, as the artifact shows it. */}
+            <div className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-2.5">
+              <input
+                placeholder="Ask about this contract…"
+                aria-label="Ask about this contract"
+                className="h-8 flex-1 rounded-md border border-border-strong bg-surface px-2.5 text-[12.5px] shadow-e1 placeholder:text-text-3 focus-visible:outline-none"
+                value={chatInput}
+                onChange={e => setChatInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    sendFromComposer();
+                  }
+                }}
+              />
+              <Button
+                size="icon"
+                aria-label="Send"
+                disabled={chatLoading || !chatInput.trim()}
+                onClick={sendFromComposer}
+              >
+                {chatLoading ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+              </Button>
+            </div>
           </aside>
         </div>
       )}
+
+      <ThemeToggle floating />
     </div>
   );
 }

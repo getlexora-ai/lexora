@@ -29,7 +29,7 @@ function AuthControls({ bare }: { bare: boolean }) {
     return (
       <div className="flex items-center gap-2.5">
         {bare && (
-          <Button size="sm" render={<Link href="/dashboard" />}>
+          <Button size="sm" nativeButton={false} render={<Link href="/dashboard" />}>
             Go to dashboard
           </Button>
         )}

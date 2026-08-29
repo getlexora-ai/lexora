@@ -439,7 +439,7 @@ export default function OnboardingPage() {
               <ArrowRight className="size-4" aria-hidden />
             </Button>
           ) : (
-            <Button size="lg" render={<Link href="/dashboard" />}>
+            <Button size="lg" nativeButton={false} render={<Link href="/dashboard" />}>
               Open workspace
               <ArrowRight className="size-4" aria-hidden />
             </Button>

@@ -1,17 +1,12 @@
-// Query-time retrieval against the local index.
+// Query-time retrieval against the pgvector index.
 
 import { embedOne } from "./gemini.ts";
-import { loadIndex, search, indexExists, INDEX_PATH } from "./store.ts";
-import { buildIndex } from "./ingest.ts";
+import { queryIndex, indexMeta, assertIndexFresh } from "./store.ts";
 import type { RetrievalHit } from "./types.ts";
 
 export type RetrieveOptions = {
   /** Number of chunks to return. Default 8. */
   topK?: number;
-  /** Build the index automatically if the file is missing. Default true. */
-  autoBuild?: boolean;
-  /** Override the index path (tests). */
-  indexPath?: string;
 };
 
 /** Embed `query` and return the top-k chunks by cosine similarity. */
@@ -19,18 +14,10 @@ export async function retrieve(
   query: string,
   opts: RetrieveOptions = {},
 ): Promise<RetrievalHit[]> {
-  const { topK = 8, autoBuild = true, indexPath = INDEX_PATH } = opts;
-
-  if (!indexExists(indexPath)) {
-    if (!autoBuild) {
-      throw new Error(`No index at ${indexPath} and autoBuild is off.`);
-    }
-    await buildIndex(indexPath);
-  }
-
-  const index = loadIndex(indexPath);
+  const { topK = 8 } = opts;
+  assertIndexFresh(await indexMeta());
   const queryVec = await embedOne(query, "RETRIEVAL_QUERY");
-  return search(queryVec, index.chunks, topK, query);
+  return queryIndex(queryVec, topK);
 }
 
 /**
@@ -48,7 +35,7 @@ export async function retrieveMany(
   const perQuery = Math.max(3, Math.ceil(topK / Math.max(queries.length, 1)) + 2);
 
   const results = await Promise.all(
-    queries.map((q) => retrieve(q, { ...opts, topK: perQuery })),
+    queries.map((q) => retrieve(q, { topK: perQuery })),
   );
 
   const picked = new Map<string, RetrievalHit>();
@@ -58,7 +45,7 @@ export async function retrieveMany(
       if (!hit || picked.size >= topK) continue;
       const prev = picked.get(hit.chunk.id);
       if (!prev) picked.set(hit.chunk.id, hit);
-      else if (hit.score > prev.score) prev.score = hit.score;
+      else if (hit.score > prev.score) picked.set(hit.chunk.id, hit);
     }
   }
   return [...picked.values()].sort((a, b) => b.score - a.score);

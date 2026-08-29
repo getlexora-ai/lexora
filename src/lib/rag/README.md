@@ -1,10 +1,12 @@
-# `src/lib/rag` — German rental-contract RAG (branch `rag/de-rental-contracts`)
+# `src/lib/rag` — German rental-contract RAG
 
-An isolated experiment: draft **Germany-curated residential leases** (`Wohnraum­miet­vertrag`)
-that are grounded in a retrieval step over German tenancy law, instead of the
-ungrounded single prompt in `src/app/api/generate/route.ts`.
+Draft **Germany-curated residential leases** (`Wohnraum­miet­vertrag`) grounded in a
+retrieval step over German tenancy law, instead of the ungrounded single prompt
+in `src/app/api/generate/route.ts`.
 
-Nothing here is wired into the app. It runs from the CLI and from `node:test`.
+**Wired into the app:** `POST /api/generate` routes here when
+`jurisdiction === "Germany"` and `contractType === "Lease Agreement"`. Everything
+else still uses the generic `askLLM()` path, unchanged.
 
 ## Pipeline
 
@@ -14,37 +16,45 @@ src/lib/rag/corpus/*.md          24 curated docs: BGB Mietrecht §§535–577a,
         │                        Schönheitsreparaturen / Kleinreparaturen / Tiere,
         │                        plus an annotated standard-contract template
         ▼
-   chunk.ts        heading-aware split, ~1.1k chars, 160-char overlap
+   chunk.ts        heading-aware split, greedy-packed (~900 char target)
         ▼
    gemini.ts       embed via `gemini-embedding-001`, 768-d, L2-normalised
         ▼
-   data/rag/de-rental-index.json     the local vector store (git-ignored)
+   rag_chunks (pgvector)          Postgres table, HNSW cosine index
+        ▼                         (db/005_rag_corpus.sql)
+   retrieve.ts     embed query → cosine ORDER BY, round-robin multi-query merge
         ▼
-   retrieve.ts     embed query → brute-force cosine top-k (+ tiny lexical bonus)
-        ▼
-   generate.ts     grounded prompt → `gemini-3.6-flash` → Wohnraummietvertrag
+   generate.ts     grounded prompt → LLM → Wohnraummietvertrag
 ```
 
-The store is a plain JSON file scanned linearly — ~130 chunks × 768 floats, so a
-query is sub-millisecond and no pgvector / external service is involved. That is
-the "store the vectors locally" requirement.
+Generation is injectable (`GenerateOptions.complete`): the API route passes an
+adapter over `src/lib/llm.ts` `askLLM()` so the customer-facing path gets the
+app's error handling and retry behaviour; the CLI falls back to the standalone
+`gemini.ts` REST client. `gemini.ts` remains the embedding client for both.
 
-## Use it
+## Setup & operations
 
 ```bash
-# 1. build the local index (needs GEMINI_API_KEY in .env.local)
+# 1. once per database — create the pgvector tables
+psql "$DATABASE_URL" -f db/005_rag_corpus.sql
+
+# 2. load / rebuild the knowledge base (needs GEMINI_API_KEY + DATABASE_URL)
 npm run rag:ingest
 
-# 2. run the eval agent: retrieval metrics + grounded-generation checks
-npm run rag:eval                 # full
+# 3. the eval agent: retrieval metrics + grounded-generation checks
+npm run rag:eval                          # full
 node scripts/rag-eval.mjs --no-generate   # retrieval only (no draft calls)
-node scripts/rag-eval.mjs --rebuild       # rebuild index, then eval
+node scripts/rag-eval.mjs --rebuild       # re-ingest, then eval
 ```
 
 `rag:eval` exits non-zero if `hit@5 < 0.90`, `MRR < 0.75`, or any generation case
 misses a required statutory anchor (`§ 551`, `§ 556`, `§ 573c`, …) or trips a
-forbidden pattern (`[EINFÜGEN]` placeholders, a deposit above the §551 cap). That
-makes it usable as a pre-merge gate on this branch.
+forbidden pattern (`[EINFÜGEN]` placeholders, a deposit above the §551 cap). Use
+it as a pre-deploy gate whenever the corpus changes.
+
+`rag_index_meta` records the embedding model, dimensionality and a corpus hash;
+`assertIndexFresh()` refuses to retrieve against an index built with a different
+model/dim.
 
 ## Programmatic entry point
 
@@ -64,18 +74,16 @@ const { contract, groundingRefs, context } = await generateGermanRentalContract(
 
 ## Tests
 
-- `tests/rag-chunk.test.mjs` — pure: chunking, cosine, `search()`. Always runs.
-- `tests/rag-retrieval.test.mjs` — retrieval smoke test; skips without a key or a
-  built index.
+- `tests/rag-chunk.test.mjs` — pure: chunking, cosine, in-memory `search()`. Always runs.
+- `tests/rag-retrieval.test.mjs` — retrieval smoke test; skips without a key, a
+  `DATABASE_URL`, the migration, or an ingested corpus.
 
 ## Notes / next steps
 
-- The module deliberately does **not** import `src/lib/llm.ts` (that pulls in the
-  `@/` path alias + `next/server`, which a bare `node` script can't resolve).
-  `gemini.ts` is a small standalone REST client in the same style. If this graduates
-  into the app, route generation through `askLLM()` and keep only the embedding
-  client here.
 - Corpus text is a paraphrase of public statutes plus standard clause wording; it
   is a drafting aid, not legal advice, and should be reviewed by a `Fachanwalt`.
-- To integrate: add a `/api/generate/de` route (or branch `/api/generate` when
-  `jurisdiction` is Germany + residential) that calls `generateGermanRentalContract`.
+  Each doc needs a review date and an owner (see `FEEDBACK.md`).
+- The pipeline (chunk / embed / store / retrieve) and the domain pack (corpus +
+  `buildQueries` + system prompt) are still coupled through
+  `generateGermanRentalContract`. Factor them apart before a second jurisdiction
+  lands — `FEEDBACK.md` covers this and the other known gaps.

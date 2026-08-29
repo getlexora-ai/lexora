@@ -1,25 +1,32 @@
-// Build the local vector index from the curated corpus.
+// Build the vector index from the curated corpus and load it into Postgres.
 
+import { createHash } from "node:crypto";
 import { loadCorpus } from "./corpus.ts";
 import { chunkCorpus, embedText } from "./chunk.ts";
 import { embedTexts, EMBED_MODEL, EMBED_DIM } from "./gemini.ts";
-import { saveIndex, INDEX_PATH } from "./store.ts";
+import { saveIndex } from "./store.ts";
 import type { IndexedChunk, RagIndex } from "./types.ts";
 
 export type IngestReport = {
-  path: string;
   docCount: number;
   chunkCount: number;
   dim: number;
-  bytes: number;
+  corpusHash: string;
   elapsedMs: number;
 };
 
+/** Short, stable digest of the corpus text — stored so drift is detectable. */
+function hashCorpus(docs: { id: string; body: string }[]): string {
+  const h = createHash("sha256");
+  for (const d of docs) h.update(`${d.id}\n${d.body}\n---\n`);
+  return h.digest("hex").slice(0, 16);
+}
+
 /**
- * corpus/*.md -> chunks -> Gemini embeddings (RETRIEVAL_DOCUMENT) -> JSON file.
- * Returns a small report; also writes to `path` (defaults to INDEX_PATH).
+ * corpus/*.md -> chunks -> Gemini embeddings (RETRIEVAL_DOCUMENT) -> rag_chunks.
+ * Replaces the existing index transactionally (see saveIndex).
  */
-export async function buildIndex(path: string = INDEX_PATH): Promise<IngestReport> {
+export async function buildIndex(): Promise<IngestReport> {
   const started = Date.now();
 
   const docs = loadCorpus();
@@ -38,18 +45,17 @@ export async function buildIndex(path: string = INDEX_PATH): Promise<IngestRepor
     dim: EMBED_DIM,
     builtAt: new Date().toISOString(),
     docCount: docs.length,
+    corpusHash: hashCorpus(docs),
     chunks: indexed,
   };
 
-  saveIndex(index, path);
-  const bytes = Buffer.byteLength(JSON.stringify(index));
+  await saveIndex(index);
 
   return {
-    path,
     docCount: docs.length,
     chunkCount: indexed.length,
     dim: EMBED_DIM,
-    bytes,
+    corpusHash: index.corpusHash,
     elapsedMs: Date.now() - started,
   };
 }

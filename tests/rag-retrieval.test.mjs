@@ -1,24 +1,28 @@
-// Retrieval smoke test against the local vector index.
-// Needs GEMINI_API_KEY (from .env.local) to embed the query, and a built index
-// at data/rag/de-rental-index.json. Skips cleanly when either is missing.
-//   node scripts/rag-ingest.mjs        # build the index first
+// Retrieval smoke test against the pgvector index.
+// Needs GEMINI_API_KEY (to embed the query) and DATABASE_URL (the vector store),
+// plus an ingested corpus. Skips cleanly when any of those is missing.
+//   psql "$DATABASE_URL" -f db/005_rag_corpus.sql   # once
+//   node scripts/rag-ingest.mjs                      # load the corpus
 //   node --test tests/rag-retrieval.test.mjs
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { indexExists, INDEX_PATH } from "../src/lib/rag/store.ts";
+import { indexMeta } from "../src/lib/rag/store.ts";
 import { retrieve } from "../src/lib/rag/retrieve.ts";
+import { endRagPool } from "../src/lib/rag/db.ts";
 
-function haveKey() {
-  if (process.env.GEMINI_API_KEY) return true;
+function envHas(key) {
+  if (process.env[key]) return true;
   try {
     const env = readFileSync(new URL("../.env.local", import.meta.url), "utf8");
-    return /^GEMINI_API_KEY=.+/m.test(env);
+    return new RegExp(`^${key}=.+`, "m").test(env);
   } catch {
     return false;
   }
 }
+
+const READY = envHas("GEMINI_API_KEY") && envHas("DATABASE_URL");
 
 const CASES = [
   { q: "Wie hoch darf die Mietkaution sein?", expect: "03-kaution-551" },
@@ -30,10 +34,17 @@ const CASES = [
 
 for (const c of CASES) {
   test(`retrieval: "${c.q}" surfaces ${c.expect} in top-3`, async (t) => {
-    if (!haveKey()) return t.skip("no GEMINI_API_KEY");
-    if (!indexExists(INDEX_PATH)) return t.skip("no index — run: node scripts/rag-ingest.mjs");
+    if (!READY) return t.skip("no GEMINI_API_KEY / DATABASE_URL");
 
-    const hits = await retrieve(c.q, { topK: 3, autoBuild: false });
+    let meta;
+    try {
+      meta = await indexMeta();
+    } catch {
+      return t.skip("RAG tables not migrated — run db/005_rag_corpus.sql");
+    }
+    if (!meta) return t.skip("index empty — run: node scripts/rag-ingest.mjs");
+
+    const hits = await retrieve(c.q, { topK: 3 });
     const ids = hits.map((h) => h.chunk.docId);
     assert.ok(
       ids.includes(c.expect),
@@ -42,3 +53,7 @@ for (const c of CASES) {
     assert.ok(hits[0].score > 0.3, `top hit score ${hits[0].score} looks too low`);
   });
 }
+
+test.after(async () => {
+  await endRagPool();
+});

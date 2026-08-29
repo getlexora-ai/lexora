@@ -28,7 +28,7 @@ export type Chunk = {
 /** A Chunk plus its embedding vector (L2-normalised). */
 export type IndexedChunk = Chunk & { embedding: number[] };
 
-/** The on-disk local vector store. */
+/** The assembled index handed to saveIndex() — one build's worth of chunks. */
 export type RagIndex = {
   /** Embedding model id used to build every vector here. */
   model: string;
@@ -38,7 +38,20 @@ export type RagIndex = {
   builtAt: string;
   /** Number of source docs that fed the index. */
   docCount: number;
+  /** Short hash of the corpus text — detects a corpus that drifted from the store. */
+  corpusHash: string;
   chunks: IndexedChunk[];
+};
+
+/** The single provenance row stored alongside the vectors (rag_index_meta). */
+export type RagIndexMeta = {
+  model: string;
+  dim: number;
+  corpusHash: string;
+  docCount: number;
+  chunkCount: number;
+  /** ISO timestamp of the last ingest. */
+  builtAt: string;
 };
 
 /** One retrieval result. `score` is cosine similarity in [-1, 1]. */

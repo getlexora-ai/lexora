@@ -1,9 +1,21 @@
 // RAG contract generation: retrieve German-tenancy-law context, then draft a
 // Wohnraummietvertrag grounded strictly in that context.
 
-import { complete } from "./gemini.ts";
+import { complete as geminiComplete } from "./gemini.ts";
 import { retrieveMany, extractStatuteRefs } from "./retrieve.ts";
 import type { GenerateParams, GenerateResult, RetrievalHit } from "./types.ts";
+
+/** A one-shot text completion. The app injects one backed by src/lib/llm.ts. */
+export type CompleteFn = (args: {
+  system?: string;
+  prompt: string;
+  maxTokens: number;
+}) => Promise<string>;
+
+export type GenerateOptions = {
+  /** Override the LLM call. Defaults to the standalone Gemini REST client. */
+  complete?: CompleteFn;
+};
 
 /**
  * The drafting request is broad, so retrieval runs as several focused sub-queries
@@ -59,12 +71,15 @@ Strikte Regeln:
 - Antworte NUR mit dem Vertragstext, ohne Vorbemerkung.`;
 
 /**
- * Draft a Germany-curated residential lease. Retrieval is grounded on the local
- * vector store; generation is instructed to cite only what it was given.
+ * Draft a Germany-curated residential lease. Retrieval is grounded on the
+ * pgvector store; generation is instructed to cite only what it was given.
  */
 export async function generateGermanRentalContract(
   params: GenerateParams,
+  opts: GenerateOptions = {},
 ): Promise<GenerateResult> {
+  const complete = opts.complete ?? geminiComplete;
+
   const context = await retrieveMany(buildQueries(params), {
     topK: params.topK ?? 12,
   });

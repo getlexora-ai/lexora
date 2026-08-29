@@ -14,7 +14,8 @@
 import { loadEnvLocal } from "../src/lib/rag/load-env.ts";
 import { QuotaExhaustedError } from "../src/lib/rag/gemini.ts";
 import { buildIndex } from "../src/lib/rag/ingest.ts";
-import { indexExists, loadIndex, INDEX_PATH } from "../src/lib/rag/store.ts";
+import { indexMeta } from "../src/lib/rag/store.ts";
+import { endRagPool } from "../src/lib/rag/db.ts";
 import { retrieve } from "../src/lib/rag/retrieve.ts";
 import { generateGermanRentalContract } from "../src/lib/rag/generate.ts";
 
@@ -111,16 +112,31 @@ async function main() {
   }
 
   // ── index ────────────────────────────────────────────────────────────────
-  if (FORCE_REBUILD || !indexExists(INDEX_PATH)) {
+  let meta;
+  try {
+    meta = await indexMeta();
+  } catch (err) {
+    if (/rag_chunks|rag_index_meta/.test(String(err))) {
+      console.error(
+        '\n  The RAG tables do not exist yet. Run:\n' +
+          '    psql "$DATABASE_URL" -f db/005_rag_corpus.sql\n',
+      );
+      process.exit(2);
+    }
+    throw err;
+  }
+
+  if (FORCE_REBUILD || !meta) {
     process.stdout.write(
       FORCE_REBUILD ? "  rebuilding vector index … " : "  no index found — building … ",
     );
-    const r = await buildIndex(INDEX_PATH);
+    const r = await buildIndex();
     console.log(`done (${r.chunkCount} chunks from ${r.docCount} docs, ${r.dim}-d)`);
+    meta = await indexMeta();
   }
-  const index = loadIndex(INDEX_PATH);
+
   console.log(`\n${bar}\n  RAG eval — German rental contracts`);
-  console.log(`  index: ${index.chunks.length} chunks · model ${index.model} · built ${index.builtAt}`);
+  console.log(`  index: ${meta.chunkCount} chunks · model ${meta.model} · built ${meta.builtAt}`);
   console.log(bar);
 
   // ── retrieval ────────────────────────────────────────────────────────────
@@ -131,7 +147,7 @@ async function main() {
   const retrievalFailures = [];
 
   for (const c of RETRIEVAL_CASES) {
-    const hits = await retrieve(c.q, { topK: TOP_K, autoBuild: false });
+    const hits = await retrieve(c.q, { topK: TOP_K });
     const ids = hits.map((h) => h.chunk.docId);
     const firstRank = ids.findIndex((id) => c.expectDocs.includes(id));
     const hit = firstRank !== -1;
@@ -196,20 +212,25 @@ async function main() {
 
   if (reasons.length) {
     console.log(`  ✗ FAIL — ${reasons.join(" · ")}\n${bar}\n`);
+    await endRagPool();
     process.exit(1);
   }
   console.log(`  ✓ PASS — retrieval and generation within thresholds\n${bar}\n`);
 }
 
-main().catch((err) => {
-  if (err instanceof QuotaExhaustedError) {
-    console.error(
-      `\n  ⏳ ${err.message}\n` +
-        `  This is an API-budget limit, not an eval failure. Wait a minute and re-run,\n` +
-        `  or run \`node scripts/rag-ingest.mjs\` once (index is cached) then \`--no-generate\`.\n`,
-    );
-    process.exit(2);
-  }
-  console.error(`\n  eval crashed: ${err?.stack || err}\n`);
-  process.exit(1);
-});
+main()
+  .then(() => endRagPool())
+  .then(() => process.exit(0))
+  .catch(async (err) => {
+    await endRagPool().catch(() => {});
+    if (err instanceof QuotaExhaustedError) {
+      console.error(
+        `\n  ⏳ ${err.message}\n` +
+          `  This is an API-budget limit, not an eval failure. Wait a minute and re-run,\n` +
+          `  or run \`node scripts/rag-ingest.mjs\` once (index is cached) then \`--no-generate\`.\n`,
+      );
+      process.exit(2);
+    }
+    console.error(`\n  eval crashed: ${err?.stack || err}\n`);
+    process.exit(1);
+  });

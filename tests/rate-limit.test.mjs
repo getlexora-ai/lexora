@@ -34,82 +34,10 @@ test("decide: day limit takes precedence over hour", () => {
   assert.equal(v.retryAfter, secondsToWindowEnd("day", NOW)); // to next UTC midnight
 });
 
-// ── integration: burst /api/refine ────────────────────────────
-// NOTE: obsolete since the compute routes were hard auth-gated (src/proxy.ts) —
-// a signed-out POST to /api/refine now 401s at the proxy before the limiter
-// runs, so this burst can no longer exercise the rate limiter. Left in place
-// (it already only runs against a live dev server on :3000) pending a rewrite
-// that drives the burst with a signed-in Clerk session. Kept for reference:
-// the IP header below no longer influences bucketing (buckets are user-keyed).
-const BASE = process.env.TEST_BASE ?? "http://localhost:3000";
-const TEST_IP = "203.0.113.77"; // TEST-NET-3, won't collide with a real client
-const GUEST_HOUR_LIMIT = 10;    // legacy fixture; see NOTE above
-
-function dbUrl() {
-  try {
-    const env = readFileSync(new URL("../.env.local", import.meta.url), "utf8");
-    const m = env.match(/^DATABASE_URL=["']?([^"'\n]+)/m);
-    return m?.[1];
-  } catch { return undefined; }
-}
-
-async function withDb(fn) {
-  const url = dbUrl();
-  if (!url) return { ok: false, reason: "no DATABASE_URL in .env.local" };
-  const { default: pg } = await import("pg");
-  const c = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } });
-  await c.connect();
-  try {
-    await fn(c);
-    return { ok: true };
-  } catch (e) {
-    if (e.code === "42P01") return { ok: false, reason: "run db/003_rate_limits.sql first" };
-    throw e;
-  } finally {
-    await c.end();
-  }
-}
-
-const cleanup = () =>
-  withDb(async (c) => {
-    await c.query("delete from rate_limits where bucket_key like $1", [`refine:ip:${TEST_IP}:%`]);
-    await c.query("delete from rate_limits where bucket_key like $1", [`compute:ip:${TEST_IP}:%`]);
-    await c.query("delete from rate_limit_blocks where bucket_key like $1", [`%:ip:${TEST_IP}%`]);
-  });
-
-test("guest refine burst: 11th request in the hour is 429 with Retry-After", async (t) => {
-  const prep = await cleanup();
-  if (!prep.ok) { t.skip(prep.reason); return; }
-  t.after(cleanup);
-
-  const hit = (n) =>
-    fetch(BASE + "/api/refine", {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-forwarded-for": TEST_IP },
-      body: JSON.stringify({}), // invalid body → 400 while allowed, never reaches Gemini
-    }).then((r) => r.status);
-
-  const statuses = [];
-  for (let i = 1; i <= GUEST_HOUR_LIMIT + 2; i++) statuses.push(await hit(i));
-
-  // First N are the handler's own 400 (bad body); the limiter let them through.
-  for (let i = 0; i < GUEST_HOUR_LIMIT; i++) {
-    assert.notEqual(statuses[i], 429, `request ${i + 1} should not be rate-limited`);
-  }
-  // The (N+1)th and beyond are blocked.
-  assert.equal(statuses[GUEST_HOUR_LIMIT], 429);
-  assert.equal(statuses[GUEST_HOUR_LIMIT + 1], 429);
-
-  const blocked = await fetch(BASE + "/api/refine", {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-forwarded-for": TEST_IP },
-    body: JSON.stringify({}),
-  });
-  assert.equal(blocked.status, 429);
-  assert.ok(Number(blocked.headers.get("retry-after")) > 0);
-  assert.deepEqual(await blocked.json(), {
-    error: "rate_limited",
-    retry_after: Number(blocked.headers.get("retry-after")),
-    scope: "guest",
-  });
-});
+// ── integration: burst a compute route ───────────────────────
+// Removed. The compute routes are now hard auth-gated (src/proxy.ts): a
+// signed-out POST 401s at the proxy before the limiter runs, and the limiter
+// no longer does IP-based guest bucketing (buckets are keyed by Clerk user id).
+// A real limiter integration test now needs a signed-in Clerk session driving
+// the burst — tracked as a follow-up.
+test("rate-limit integration burst", { skip: "needs an authenticated Clerk session — see note above" }, () => {});

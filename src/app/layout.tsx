@@ -1,56 +1,55 @@
 import { ClerkProvider } from "@clerk/nextjs";
 import { shadcn } from "@clerk/ui/themes";
 import type { Metadata } from "next";
-import { Inter, Fragment_Mono, Instrument_Serif } from "next/font/google";
+import { Figtree, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import { Navbar } from "@/components/navbar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
-/* Three-face system:
-   — Inter        workhorse. All UI, all body, all data-dense surfaces.
-   — Fragment Mono  metadata register: clause types, statuses, counts, eyebrows.
-   — Instrument Serif  editorial register: hero and section openers only.     */
-const sans = Inter({
+/* Two-face system:
+   — Figtree         workhorse. All UI, all body, all data-dense surfaces.
+   — JetBrains Mono  metadata register: clause refs, keys, counts, eyebrows. */
+const sans = Figtree({
   variable: "--font-sans",
   subsets: ["latin"],
   display: "swap",
 });
 
-const mono = Fragment_Mono({
+const mono = JetBrains_Mono({
   variable: "--font-mono",
   subsets: ["latin"],
-  weight: "400",
-  display: "swap",
-});
-
-const serif = Instrument_Serif({
-  variable: "--font-serif",
-  subsets: ["latin"],
-  weight: "400",
   display: "swap",
 });
 
 export const metadata: Metadata = {
   title: "Lexora — Contract intelligence",
   description:
-    "Read every clause, flag every risk, and rewrite what needs rewriting — before you sign.",
+    "Lexora flags the clauses worth a closer look and drafts suggested wording — for your own review, before you sign.",
 };
 
+/* The Clerk widget inherits the palette through @clerk/ui/themes/shadcn.css,
+   which reads the same tokens as the rest of the app, so it re-themes with the
+   toggle. Only the shape, type face and primary need pointing at our values. */
 const clerkAppearance = {
   theme: shadcn,
   variables: {
-    colorPrimary: "oklch(0.23 0.01 68)",
-    colorBackground: "oklch(0.992 0.004 85)",
-    colorText: "oklch(0.19 0.008 75)",
-    colorTextSecondary: "oklch(0.46 0.012 70)",
-    colorInputBackground: "oklch(0.992 0.004 85)",
-    colorDanger: "oklch(0.475 0.185 25)",
-    colorSuccess: "oklch(0.455 0.09 155)",
-    colorWarning: "oklch(0.475 0.115 62)",
-    borderRadius: "0.7rem",
+    colorPrimary: "var(--btn-primary-solid)",
+    colorBackground: "var(--surface)",
+    colorText: "var(--text)",
+    colorTextSecondary: "var(--text-2)",
+    colorInputBackground: "var(--surface-2)",
+    colorInputText: "var(--text)",
+    colorNeutral: "var(--text)",
+    colorDanger: "var(--high)",
+    colorSuccess: "var(--low)",
+    colorWarning: "var(--med)",
+    borderRadius: "7px",
     fontFamily: "var(--font-sans)",
   },
 };
+
+/* Applied before first paint so an explicit theme choice never flashes the
+   other palette. No choice stored → nothing set → the OS preference wins. */
+const THEME_BOOTSTRAP = `(function(){try{var t=localStorage.getItem("lexora-theme");if(t==="light"||t==="dark"){document.documentElement.setAttribute("data-theme",t)}}catch(e){}})()`;
 
 export default function RootLayout({
   children,
@@ -60,9 +59,11 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${sans.variable} ${mono.variable} ${serif.variable} h-full antialiased`}
+      className={`${sans.variable} ${mono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
       <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
         {/* Quill snow theme — loaded from CDN to avoid bundler processing issues */}
         <link
           rel="stylesheet"
@@ -71,10 +72,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-full flex flex-col">
         <ClerkProvider appearance={clerkAppearance}>
-          <TooltipProvider>
-            <Navbar />
-            {children}
-          </TooltipProvider>
+          <TooltipProvider>{children}</TooltipProvider>
         </ClerkProvider>
       </body>
     </html>

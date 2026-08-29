@@ -3,29 +3,284 @@
 @import "shadcn/tailwind.css";
 @import "@clerk/ui/themes/shadcn.css";
 
-@custom-variant dark (&:is(.dark *));
-
 /* ═══════════════════════════════════════════════════════════════════════════
-   LEXORA DESIGN SYSTEM — "Ink & Parchment"
+   LEXORA DESIGN SYSTEM — dark-first
 
-   Principle: colour carries meaning, never decoration. The chrome is warm
-   monochrome (parchment ground, ink type); chromatic colour is reserved for
-   risk semantics (high / medium / low / resolved) and for one brand accent
-   that marks AI-agentic affordances. A reviewer scanning a contract should be
-   able to trust that anything coloured is telling them something.
+   Bare :root is the DARK palette. Light arrives two ways: via the OS
+   preference (unless the user has explicitly chosen dark) and via an explicit
+   [data-theme="light"] on <html>. [data-theme="dark"] re-affirms dark so the
+   toggle wins in both directions.
+
+   Near-monochrome neutral surfaces, hairline borders with a soft inner top
+   highlight instead of drop shadows, generous radii, mono for keys / clause
+   refs / data. Colour is spent only on risk (brick / ochre / green) and a
+   single blue for links + focus. Primary actions are graphite, never blue.
    ═══════════════════════════════════════════════════════════════════════════ */
+
+/* `dark:` utilities follow the same three-way rule as the tokens, so shadcn
+   primitives that ship dark-mode tweaks keep working without a `.dark` class. */
+@custom-variant dark {
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme="light"]) *, :root:not([data-theme="light"])) {
+      @slot;
+    }
+  }
+  &:where(:root[data-theme="dark"] *, :root[data-theme="dark"]) {
+    @slot;
+  }
+}
+
+:root {
+  /* ── Raw palette — DARK is the base ──────────────────────────────────── */
+  --bg: #0b0b0c;
+  --surface: #151517;
+  --surface-2: #1b1b1e;
+  --surface-3: #212125;
+  --paper: #17171a; /* the document */
+  --border: #29292d;
+  --border-strong: #37373d;
+
+  --text: #f4f4f3;
+  --text-2: #a6a6a1;
+  --text-3: #6e6e68;
+
+  --brand: #6aa0ff; /* links + focus only */
+  --ring: #4c86f0;
+
+  --high: #e9827a;
+  --high-bg: #2a1a19;
+  --high-line: #4a2c29;
+  --med: #e0b05a;
+  --med-bg: #271f12;
+  --med-line: #45351c;
+  --low: #6fc49b;
+  --low-bg: #142219;
+  --low-line: #244736;
+
+  --btn-primary: linear-gradient(180deg, #efefea 0%, #dcdcd5 100%);
+  --btn-primary-tx: #1a1a17;
+  --btn-primary-solid: #e6e6e0;
+
+  --hl-top: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 12px 30px -12px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 34px 80px -26px rgba(0, 0, 0, 0.72);
+
+  --scrim: rgba(6, 6, 7, 0.62);
+
+  color-scheme: dark;
+
+  /* ── Shape ───────────────────────────────────────────────────────────── */
+  --r-xs: 5px;
+  --r-sm: 7px;
+  --r: 10px;
+  --r-lg: 14px;
+  --r-xl: 20px;
+  --r-pill: 999px;
+  --radius: var(--r);
+
+  /* ── shadcn semantic tokens, mapped onto the palette above ───────────── */
+  --background: var(--bg);
+  --foreground: var(--text);
+
+  --card: var(--surface);
+  --card-foreground: var(--text);
+  --popover: var(--surface);
+  --popover-foreground: var(--text);
+
+  --primary: var(--btn-primary-solid);
+  --primary-foreground: var(--btn-primary-tx);
+
+  --secondary: var(--surface-2);
+  --secondary-foreground: var(--text);
+
+  --muted: var(--surface-2);
+  --muted-foreground: var(--text-2);
+
+  --accent: var(--surface-3);
+  --accent-foreground: var(--text);
+
+  --destructive: var(--high);
+  --input: var(--border-strong);
+
+  /* Brand is a link/focus accent, not a fill. Kept so existing brand-* classes
+     resolve; the soft/line tints are derived so they track the theme. */
+  --brand-foreground: var(--bg);
+  --brand-soft: color-mix(in oklab, var(--brand) 14%, var(--surface));
+  --brand-line: color-mix(in oklab, var(--brand) 34%, var(--border));
+
+  /* Risk semantics — the only chromatic colour besides brand. */
+  --risk-high: var(--high);
+  --risk-high-soft: var(--high-bg);
+  --risk-high-line: var(--high-line);
+  --risk-medium: var(--med);
+  --risk-medium-soft: var(--med-bg);
+  --risk-medium-line: var(--med-line);
+  --risk-low: var(--low);
+  --risk-low-soft: var(--low-bg);
+  --risk-low-line: var(--low-line);
+  --risk-ok: var(--low);
+  --risk-ok-soft: var(--low-bg);
+  --risk-ok-line: var(--low-line);
+
+  /* Editor mark-up — the two colours a reviewer sees inside the document.
+     Marker strokes rather than solid fills, so contract text stays legible. */
+  --mark-focus: color-mix(in oklab, var(--med) 34%, transparent);
+  --mark-applied: color-mix(in oklab, var(--low) 32%, transparent);
+
+  --chart-1: var(--high);
+  --chart-2: var(--med);
+  --chart-3: var(--low);
+  --chart-4: var(--text-2);
+  --chart-5: var(--brand);
+
+  --sidebar: var(--surface-2);
+  --sidebar-foreground: var(--text);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--surface);
+  --sidebar-accent-foreground: var(--text);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+}
+
+/* ── LIGHT — mirrored override ────────────────────────────────────────── */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #fafaf9;
+    --surface: #ffffff;
+    --surface-2: #f4f4f3;
+    --surface-3: #eeeeed;
+    --paper: #ffffff;
+    --border: #e7e7e4;
+    --border-strong: #d9d9d5;
+
+    --text: #1a1a18;
+    --text-2: #5b5b57;
+    --text-3: #97978f;
+
+    --brand: #2563eb;
+    --ring: #2563eb;
+
+    --high: #c4362f;
+    --high-bg: #fbedec;
+    --high-line: #e8c7c4;
+    --med: #b0740b;
+    --med-bg: #fbf2e3;
+    --med-line: #ebd6ae;
+    --low: #2f7d5b;
+    --low-bg: #e8f4ee;
+    --low-line: #bfe0d0;
+
+    --btn-primary: linear-gradient(180deg, #38382f 0%, #23231d 100%);
+    --btn-primary-tx: #fbfbf8;
+    --btn-primary-solid: #2d2d26;
+
+    --hl-top: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+    --shadow-sm: 0 1px 2px rgba(20, 20, 18, 0.06);
+    --shadow: 0 1px 3px rgba(20, 20, 18, 0.07),
+      0 10px 26px -10px rgba(20, 20, 18, 0.14);
+    --shadow-lg: 0 30px 70px -24px rgba(20, 20, 18, 0.26);
+
+    --scrim: rgba(20, 20, 18, 0.28);
+
+    color-scheme: light;
+  }
+}
+
+:root[data-theme="light"] {
+  --bg: #fafaf9;
+  --surface: #ffffff;
+  --surface-2: #f4f4f3;
+  --surface-3: #eeeeed;
+  --paper: #ffffff;
+  --border: #e7e7e4;
+  --border-strong: #d9d9d5;
+
+  --text: #1a1a18;
+  --text-2: #5b5b57;
+  --text-3: #97978f;
+
+  --brand: #2563eb;
+  --ring: #2563eb;
+
+  --high: #c4362f;
+  --high-bg: #fbedec;
+  --high-line: #e8c7c4;
+  --med: #b0740b;
+  --med-bg: #fbf2e3;
+  --med-line: #ebd6ae;
+  --low: #2f7d5b;
+  --low-bg: #e8f4ee;
+  --low-line: #bfe0d0;
+
+  --btn-primary: linear-gradient(180deg, #38382f 0%, #23231d 100%);
+  --btn-primary-tx: #fbfbf8;
+  --btn-primary-solid: #2d2d26;
+
+  --hl-top: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  --shadow-sm: 0 1px 2px rgba(20, 20, 18, 0.06);
+  --shadow: 0 1px 3px rgba(20, 20, 18, 0.07),
+    0 10px 26px -10px rgba(20, 20, 18, 0.14);
+  --shadow-lg: 0 30px 70px -24px rgba(20, 20, 18, 0.26);
+
+  --scrim: rgba(20, 20, 18, 0.28);
+
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --bg: #0b0b0c;
+  --surface: #151517;
+  --surface-2: #1b1b1e;
+  --surface-3: #212125;
+  --paper: #17171a;
+  --border: #29292d;
+  --border-strong: #37373d;
+
+  --text: #f4f4f3;
+  --text-2: #a6a6a1;
+  --text-3: #6e6e68;
+
+  --brand: #6aa0ff;
+  --ring: #4c86f0;
+
+  --high: #e9827a;
+  --high-bg: #2a1a19;
+  --high-line: #4a2c29;
+  --med: #e0b05a;
+  --med-bg: #271f12;
+  --med-line: #45351c;
+  --low: #6fc49b;
+  --low-bg: #142219;
+  --low-line: #244736;
+
+  --btn-primary: linear-gradient(180deg, #efefea 0%, #dcdcd5 100%);
+  --btn-primary-tx: #1a1a17;
+  --btn-primary-solid: #e6e6e0;
+
+  --hl-top: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 12px 30px -12px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 34px 80px -26px rgba(0, 0, 0, 0.72);
+
+  --scrim: rgba(6, 6, 7, 0.62);
+
+  color-scheme: dark;
+}
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
 
-  /* Type ------------------------------------------------------------------ */
+  /* Type — Figtree carries every functional surface; JetBrains Mono is the
+     metadata register (clause refs, keys, counts, eyebrows). No serif. */
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
-  --font-serif: var(--font-serif);
+  --font-serif: var(--font-sans);
   --font-heading: var(--font-sans);
 
-  /* Surfaces & chrome ----------------------------------------------------- */
+  /* Surfaces & chrome */
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -42,6 +297,7 @@
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-destructive: var(--destructive);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
@@ -56,13 +312,19 @@
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
 
-  /* Brand — AI / agentic affordances only ---------------------------------- */
+  /* Raw surface ramp, addressable directly for app chrome */
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-paper: var(--paper);
+  --color-text-2: var(--text-2);
+  --color-text-3: var(--text-3);
+
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
   --color-brand-soft: var(--brand-soft);
   --color-brand-line: var(--brand-line);
 
-  /* Risk semantics --------------------------------------------------------- */
   --color-risk-high: var(--risk-high);
   --color-risk-high-soft: var(--risk-high-soft);
   --color-risk-high-line: var(--risk-high-line);
@@ -76,188 +338,31 @@
   --color-risk-ok-soft: var(--risk-ok-soft);
   --color-risk-ok-line: var(--risk-ok-line);
 
-  /* Radius — generous, 8→36px. The reference sits at 14–24px on containers;
-     8–12px on controls keeps dense tables from looking like toys.           */
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  /* Radius — 5 / 7 / 10 / 14, then two containers and a pill. */
+  --radius-xs: var(--r-xs);
+  --radius-sm: var(--r-xs);
+  --radius-md: var(--r-sm);
+  --radius-lg: var(--r);
+  --radius-xl: var(--r-lg);
+  --radius-2xl: var(--r-xl);
+  --radius-3xl: 28px;
+  --radius-4xl: var(--r-pill);
 
-  /* Elevation — near-flat. Depth comes from a hairline ring plus a very soft
-     ambient pool, never a hard drop shadow. `e-inset` is the bevel used on
-     dark surfaces, lifted straight from the reference's treatment.          */
-  --shadow-e1: 0 1px 2px -1px var(--shade-8), 0 1px 3px -1px var(--shade-6);
-  --shadow-e2: 0 2px 4px -2px var(--shade-8), 0 12px 28px -16px var(--shade-14);
-  --shadow-e3: 0 4px 8px -4px var(--shade-8), 0 24px 48px -24px var(--shade-18);
-  --shadow-e-inset: inset 0 1px 0 0 rgb(255 255 255 / 0.08);
-}
-
-:root {
-  /* Warm parchment ground — #F5F3EF-ish. Pure white reads clinical and,
-     against long passages of contract text, fatiguing.                      */
-  --background: oklch(0.966 0.005 85);
-  --foreground: oklch(0.19 0.008 75);
-
-  --card: oklch(0.992 0.004 85);
-  --card-foreground: var(--foreground);
-  --popover: oklch(0.994 0.003 85);
-  --popover-foreground: var(--foreground);
-
-  --primary: oklch(0.23 0.01 68);
-  --primary-foreground: oklch(0.985 0.004 85);
-
-  --secondary: oklch(0.944 0.006 82);
-  --secondary-foreground: var(--foreground);
-
-  --muted: oklch(0.938 0.007 82);
-  /* L 0.46 clears 4.5:1 against both the parchment ground and the card. */
-  --muted-foreground: oklch(0.46 0.012 70);
-
-  --accent: oklch(0.928 0.008 82);
-  --accent-foreground: var(--foreground);
-
-  --destructive: oklch(0.475 0.185 25);
-
-  --border: oklch(0.893 0.008 82);
-  --input: oklch(0.872 0.009 82);
-  --ring: oklch(0.47 0.17 285);
-
-  /* Brand "Iris" — hue 285 sits maximally far from every risk hue (25 / 62 /
-     245 / 155), so an AI affordance can never be mistaken for a risk signal.
-     L 0.47 clears 4.5:1 as text on parchment AND carries white text as a fill. */
-  --brand: oklch(0.47 0.17 285);
-  --brand-foreground: oklch(0.985 0.004 285);
-  --brand-soft: oklch(0.958 0.022 285);
-  --brand-line: oklch(0.9 0.045 285);
-
-  --risk-high: oklch(0.475 0.185 25);
-  --risk-high-soft: oklch(0.958 0.022 25);
-  --risk-high-line: oklch(0.895 0.05 25);
-
-  --risk-medium: oklch(0.475 0.115 62);
-  --risk-medium-soft: oklch(0.958 0.03 75);
-  --risk-medium-line: oklch(0.9 0.06 75);
-
-  --risk-low: oklch(0.475 0.1 245);
-  --risk-low-soft: oklch(0.958 0.022 245);
-  --risk-low-line: oklch(0.9 0.045 245);
-
-  --risk-ok: oklch(0.455 0.09 155);
-  --risk-ok-soft: oklch(0.958 0.028 155);
-  --risk-ok-line: oklch(0.895 0.055 155);
-
-  /* Editor mark-up — the two colours a reviewer sees inside the document. */
-  --mark-focus: oklch(0.93 0.11 95);
-  --mark-applied: oklch(0.92 0.09 155);
-
-  /* Shade ramp used by the elevation tokens, so shadows are warm ink rather
-     than neutral grey and re-tint correctly in dark mode.                    */
-  --shade-6: oklch(0.19 0.008 75 / 0.06);
-  --shade-8: oklch(0.19 0.008 75 / 0.08);
-  --shade-14: oklch(0.19 0.008 75 / 0.14);
-  --shade-18: oklch(0.19 0.008 75 / 0.18);
-
-  --chart-1: var(--brand);
-  --chart-2: var(--risk-ok);
-  --chart-3: var(--risk-medium);
-  --chart-4: var(--risk-high);
-  --chart-5: var(--risk-low);
-
-  --radius: 0.875rem;
-
-  --sidebar: oklch(0.952 0.006 84);
-  --sidebar-foreground: var(--foreground);
-  --sidebar-primary: var(--primary);
-  --sidebar-primary-foreground: var(--primary-foreground);
-  --sidebar-accent: oklch(0.985 0.004 85);
-  --sidebar-accent-foreground: var(--foreground);
-  --sidebar-border: oklch(0.888 0.008 82);
-  --sidebar-ring: var(--ring);
-}
-
-.dark {
-  --background: oklch(0.155 0.006 70);
-  --foreground: oklch(0.962 0.004 85);
-
-  --card: oklch(0.197 0.007 72);
-  --card-foreground: var(--foreground);
-  --popover: oklch(0.213 0.007 72);
-  --popover-foreground: var(--foreground);
-
-  --primary: oklch(0.945 0.005 85);
-  --primary-foreground: oklch(0.185 0.008 72);
-
-  --secondary: oklch(0.262 0.008 74);
-  --secondary-foreground: var(--foreground);
-
-  --muted: oklch(0.253 0.008 74);
-  --muted-foreground: oklch(0.735 0.012 78);
-
-  --accent: oklch(0.278 0.009 74);
-  --accent-foreground: var(--foreground);
-
-  --destructive: oklch(0.68 0.17 25);
-
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 16%);
-  --ring: oklch(0.72 0.15 288);
-
-  --brand: oklch(0.72 0.15 288);
-  --brand-foreground: oklch(0.17 0.02 288);
-  --brand-soft: oklch(0.3 0.07 288);
-  --brand-line: oklch(0.4 0.09 288);
-
-  --risk-high: oklch(0.7 0.17 25);
-  --risk-high-soft: oklch(0.29 0.075 25);
-  --risk-high-line: oklch(0.4 0.1 25);
-
-  --risk-medium: oklch(0.76 0.13 72);
-  --risk-medium-soft: oklch(0.3 0.06 72);
-  --risk-medium-line: oklch(0.41 0.08 72);
-
-  --risk-low: oklch(0.72 0.11 245);
-  --risk-low-soft: oklch(0.29 0.06 245);
-  --risk-low-line: oklch(0.4 0.08 245);
-
-  --risk-ok: oklch(0.72 0.12 155);
-  --risk-ok-soft: oklch(0.29 0.06 155);
-  --risk-ok-line: oklch(0.4 0.08 155);
-
-  --mark-focus: oklch(0.62 0.13 95);
-  --mark-applied: oklch(0.55 0.11 155);
-
-  --shade-6: oklch(0 0 0 / 0.24);
-  --shade-8: oklch(0 0 0 / 0.32);
-  --shade-14: oklch(0 0 0 / 0.44);
-  --shade-18: oklch(0 0 0 / 0.55);
-
-  --chart-1: var(--brand);
-  --chart-2: var(--risk-ok);
-  --chart-3: var(--risk-medium);
-  --chart-4: var(--risk-high);
-  --chart-5: var(--risk-low);
-
-  --sidebar: oklch(0.178 0.006 70);
-  --sidebar-foreground: var(--foreground);
-  --sidebar-primary: var(--primary);
-  --sidebar-primary-foreground: var(--primary-foreground);
-  --sidebar-accent: oklch(0.235 0.008 74);
-  --sidebar-accent-foreground: var(--foreground);
-  --sidebar-border: oklch(1 0 0 / 9%);
-  --sidebar-ring: var(--ring);
+  /* Elevation — every raised surface carries the inner top highlight; the
+     ambient pool underneath is soft and layered, never a hard drop shadow. */
+  --shadow-e1: var(--hl-top), var(--shadow-sm);
+  --shadow-e2: var(--hl-top), var(--shadow);
+  --shadow-e3: var(--hl-top), var(--shadow-lg);
+  --shadow-e-inset: var(--hl-top);
 }
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border;
   }
   body {
     @apply bg-background text-foreground;
-    font-feature-settings: "cv11", "ss01";
-    font-variation-settings: normal;
+    letter-spacing: -0.005em;
   }
   html {
     @apply font-sans;
@@ -265,18 +370,14 @@
     text-rendering: optimizeLegibility;
   }
 
-  /* Optical tightening. The reference tracks display type at roughly -0.06em
-     and UI labels at -0.04em; loose default tracking is what makes Inter look
-     generic at large sizes.                                                  */
   h1,
   h2,
   h3,
   h4 {
-    letter-spacing: -0.022em;
+    letter-spacing: -0.024em;
   }
 
-  /* Tabular figures everywhere a number is compared against another number —
-     counts, dates, risk tallies — so columns align on the decimal.           */
+  /* Tabular figures everywhere a number is compared against another number. */
   th,
   td,
   time,
@@ -284,44 +385,235 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* A ring that reads on every surface: a 2px cut-out in the local ground,
+     then the focus colour. Never removed, even under reduced motion. */
+  :focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--ring);
+    border-radius: var(--r-xs);
+  }
+
   ::selection {
-    background: var(--mark-focus);
-    color: var(--foreground);
+    background: color-mix(in oklab, var(--brand) 32%, transparent);
   }
 }
 
 @layer components {
-  /* Eyebrow / metadata label. Mono + uppercase + wide tracking is the
-     "engineered" register — it marks machine-derived values (clause types,
-     statuses, counts) as distinct from human prose.                          */
+  /* Eyebrow / metadata label — mono + uppercase + wide tracking marks
+     machine-derived values as distinct from human prose. */
   .eyebrow {
     font-family: var(--font-mono);
-    font-size: 0.6875rem;
-    line-height: 1;
+    font-size: 0.625rem;
+    line-height: 1.4;
     letter-spacing: 0.1em;
     text-transform: uppercase;
-    color: var(--muted-foreground);
+    color: var(--text-3);
   }
 
-  /* Editorial display face — hero, section openers, empty states. Seasoning,
-     never body copy: a serif at 14px inside a data table would hurt scanning. */
+  /* Display type. No serif in this system — weight and negative tracking do
+     the work instead. */
   .display {
-    font-family: var(--font-serif);
-    font-weight: 400;
-    letter-spacing: -0.028em;
-    line-height: 1.04;
+    font-family: var(--font-sans);
+    font-weight: 700;
+    letter-spacing: -0.032em;
+    line-height: 1.08;
+    text-wrap: balance;
   }
 
-  /* The bevel that replaces drop shadows on dark surfaces. */
+  .mono-num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* The bevel that replaces drop shadows on raised surfaces. */
   .bevel {
-    box-shadow: var(--shadow-e-inset);
+    box-shadow: var(--hl-top);
   }
 
   /* Hairline container: the default card treatment across the app. */
   .panel {
-    background: var(--card);
-    border-radius: var(--radius);
-    box-shadow: 0 0 0 1px var(--border);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    box-shadow: var(--hl-top), var(--shadow-sm);
+  }
+
+  /* Graphite primary. The single loud surface in the system — cream on dark,
+     ink on light — so a primary action never competes with a risk colour. */
+  .btn-graphite {
+    background-image: var(--btn-primary);
+    background-color: transparent;
+    color: var(--btn-primary-tx);
+    border-color: transparent;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), var(--shadow-sm);
+  }
+  .btn-graphite:hover:not(:disabled) {
+    filter: brightness(1.06);
+  }
+
+  /* Keycap. */
+  .kbd {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 500;
+    color: var(--text-3);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--r-xs);
+    padding: 1px 5px;
+    box-shadow: var(--hl-top);
+  }
+
+  /* Risk pill — dot + tinted ground + hairline in the risk hue. */
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: var(--r-pill);
+    border: 1px solid transparent;
+    white-space: nowrap;
+  }
+  .pill > i {
+    width: 6px;
+    height: 6px;
+    border-radius: var(--r-pill);
+    flex: none;
+  }
+  .pill-high {
+    color: var(--high);
+    background: var(--high-bg);
+    border-color: var(--high-line);
+  }
+  .pill-high > i {
+    background: var(--high);
+  }
+  .pill-med {
+    color: var(--med);
+    background: var(--med-bg);
+    border-color: var(--med-line);
+  }
+  .pill-med > i {
+    background: var(--med);
+  }
+  .pill-low {
+    color: var(--low);
+    background: var(--low-bg);
+    border-color: var(--low-line);
+  }
+  .pill-low > i {
+    background: var(--low);
+  }
+  .pill-none {
+    color: var(--text-3);
+    background: var(--surface-2);
+    border-color: var(--border);
+  }
+  .pill-none > i {
+    background: var(--text-3);
+  }
+
+  /* The highlight device — a marker stroke across the lower half of the line,
+     never a solid fill, so the contract text underneath stays fully legible. */
+  .hl {
+    --hlc: color-mix(in oklab, var(--med) 32%, transparent);
+    background-image: linear-gradient(
+      transparent 52%,
+      var(--hlc) 52%,
+      var(--hlc) 92%,
+      transparent 92%
+    );
+    border-radius: 1px;
+    padding: 0 0.04em;
+  }
+  .hl-high {
+    --hlc: color-mix(in oklab, var(--high) 36%, transparent);
+  }
+  .hl-med {
+    --hlc: color-mix(in oklab, var(--med) 36%, transparent);
+  }
+  .hl-low {
+    --hlc: color-mix(in oklab, var(--low) 32%, transparent);
+  }
+
+  /* Redline pair. */
+  .rl-del {
+    text-decoration: line-through;
+    text-decoration-color: var(--high);
+    color: var(--text-3);
+  }
+  .rl-ins {
+    text-decoration: none;
+    color: var(--text);
+    background-image: linear-gradient(
+      transparent 52%,
+      color-mix(in oklab, var(--low) 32%, transparent) 52%
+    );
+  }
+
+  /* Grid wash used behind hero / brand panels. */
+  .gridwash::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.5;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 46px 46px;
+    -webkit-mask-image: radial-gradient(
+      120% 70% at 50% 0%,
+      #000 12%,
+      transparent 74%
+    );
+    mask-image: radial-gradient(120% 70% at 50% 0%, #000 12%, transparent 74%);
+  }
+
+  /* Indeterminate shimmer for rows still being analysed. */
+  .shimmer-track {
+    position: relative;
+    overflow: hidden;
+    border-radius: var(--r-pill);
+    background: var(--surface-3);
+  }
+  .shimmer-track::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    width: 40%;
+    border-radius: inherit;
+    background: var(--text-3);
+    opacity: 0.5;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .shimmer-track::after {
+      animation: lex-slide 1.3s ease-in-out infinite;
+    }
+  }
+  @keyframes lex-slide {
+    0% {
+      left: -40%;
+    }
+    100% {
+      left: 100%;
+    }
+  }
+
+  /* Scroll-reveal from-state. The `.in` class is added by an observer; with
+     reduced motion the from-state is never applied at all. */
+  @media (prefers-reduced-motion: no-preference) {
+    .reveal {
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 0.7s ease, transform 0.7s ease;
+    }
+    .reveal.in {
+      opacity: 1;
+      transform: none;
+    }
   }
 }
 
@@ -335,68 +627,69 @@
   flex-direction: column;
   min-height: 0; /* allow shrinking below content height */
   overflow: hidden;
-  background: var(--card);
+  background: var(--bg);
 }
 
 .quill-host .ql-toolbar.ql-snow {
   flex-shrink: 0;
   border: none;
   border-bottom: 1px solid var(--border);
-  background: var(--card);
-  padding: 0.625rem 1.5rem;
+  background: var(--surface-2);
+  padding: 0.5rem 1rem;
   font-family: var(--font-sans);
 }
 
 /* Quill ships hard-coded #444/#06c greys. Re-point them at the ink ramp so the
    toolbar belongs to the same system as the rest of the chrome.             */
 .quill-host .ql-snow .ql-stroke {
-  stroke: var(--muted-foreground);
+  stroke: var(--text-2);
 }
 .quill-host .ql-snow .ql-fill,
 .quill-host .ql-snow .ql-stroke.ql-fill {
-  fill: var(--muted-foreground);
+  fill: var(--text-2);
 }
 .quill-host .ql-snow .ql-picker {
-  color: var(--muted-foreground);
+  color: var(--text-2);
   font-family: var(--font-sans);
 }
 .quill-host .ql-snow .ql-picker-options {
-  background: var(--popover);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-e2);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r);
+  box-shadow: var(--hl-top), var(--shadow-lg);
   padding: 0.25rem;
 }
 .quill-host .ql-snow .ql-picker-item {
-  border-radius: calc(var(--radius) * 0.45);
+  border-radius: var(--r-xs);
   padding: 0.25rem 0.5rem;
 }
 .quill-host .ql-snow .ql-picker-item:hover,
 .quill-host .ql-snow .ql-picker-item.ql-selected {
-  color: var(--foreground);
-  background: var(--accent);
+  color: var(--text);
+  background: var(--surface-2);
 }
 .quill-host .ql-snow.ql-toolbar button,
 .quill-host .ql-snow .ql-picker-label {
-  border-radius: calc(var(--radius) * 0.45);
+  border-radius: var(--r-xs);
   transition: background-color 120ms ease, color 120ms ease;
 }
 .quill-host .ql-snow.ql-toolbar button:hover,
 .quill-host .ql-snow .ql-picker-label:hover {
-  background: var(--accent);
+  background: var(--surface-3);
 }
 .quill-host .ql-snow.ql-toolbar button:hover .ql-stroke,
 .quill-host .ql-snow.ql-toolbar button.ql-active .ql-stroke,
 .quill-host .ql-snow .ql-picker-label:hover .ql-stroke {
-  stroke: var(--foreground);
+  stroke: var(--text);
 }
 .quill-host .ql-snow.ql-toolbar button:hover .ql-fill,
 .quill-host .ql-snow.ql-toolbar button.ql-active .ql-fill {
-  fill: var(--foreground);
+  fill: var(--text);
 }
 .quill-host .ql-snow.ql-toolbar button.ql-active {
-  background: var(--accent);
-  color: var(--foreground);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--hl-top), var(--shadow-sm);
 }
 .quill-host .ql-snow a {
   color: var(--brand);
@@ -407,37 +700,42 @@
   min-height: 0; /* same trick: allow container to shrink & scroll */
   border: none;
   font-family: var(--font-sans);
-  font-size: 0.9375rem;
+  font-size: 13.5px;
   line-height: 1.8;
   overflow: hidden;
 }
 
-/* Contract text is the one place where measure matters more than fill: a
-   ~72ch column keeps clause-length sentences readable. */
+/* The document reads as a sheet of paper floating on the app ground: contract
+   text is the one place where measure matters more than fill. */
 .quill-host .ql-editor {
   height: 100%;
   overflow-y: auto; /* the actual scroll container */
-  padding: 3rem clamp(1.5rem, 6vw, 4.5rem);
-  color: var(--foreground);
+  padding: clamp(28px, 5vw, 52px) clamp(22px, 5vw, 56px) 56px;
+  color: var(--text-2);
+  background: var(--paper);
   white-space: pre-wrap;
-  max-width: 78ch;
-  margin: 0 auto;
-  width: 100%;
+  max-width: 760px;
+  margin: clamp(18px, 4vw, 40px) auto;
+  width: calc(100% - clamp(28px, 8vw, 80px));
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--hl-top), var(--shadow);
 }
 
 .quill-host .ql-editor h1,
 .quill-host .ql-editor h2,
 .quill-host .ql-editor h3 {
-  font-weight: 600;
+  color: var(--text);
+  font-weight: 650;
   letter-spacing: -0.02em;
   margin-top: 1.25em;
 }
 
 .quill-host .ql-editor.ql-blank::before {
-  color: var(--muted-foreground);
+  color: var(--text-3);
   font-style: normal;
-  left: clamp(1.5rem, 6vw, 4.5rem);
-  right: clamp(1.5rem, 6vw, 4.5rem);
+  left: clamp(22px, 5vw, 56px);
+  right: clamp(22px, 5vw, 56px);
 }
 
 /* ── End Quill ──────────────────────────────────────────────────────────── */

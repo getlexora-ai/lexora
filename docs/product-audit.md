@@ -106,16 +106,37 @@ affordances (dismiss-with-reason, add-missed-clause).
 
 ---
 
-## Execution plan
+## Execution plan — all shipped 2026-08-30
 
-**Wave A (done 2026-08-30):** C1 fix · this document.
+**Wave A** ✅ — C1 fix · this document.
 
-**Wave B (parallel, worktree agents):**
-- #3 — hard auth-gate on compute routes + `proxy.ts` + `rate-limit.ts`
-- #5 — Germany-only + EN/DE language selector; grounded, DE-aware analysis
-- #6 — pluggable object storage for originals (disabled until a bucket is set)
+**Wave B** ✅ (parallel worktree agents, merged sequentially):
+- #3 — hard auth-gate: `src/proxy.ts` 401s a signed-out POST to any compute
+  route (analyse/generate/extract/refine/chat/contract-edit + reanalyse);
+  `rate-limit.ts` simplified to user-keyed buckets only.
+- #5 — Germany-only: jurisdiction dropdown → EN/DE Language select; grounded
+  DE-law analysis with inline statute citations (`reviewPrompt(language)`,
+  optional `reference` field — not yet a DB column); `language` threaded through
+  generate + RAG.
+- #6 — `src/lib/storage.ts`: `none` / `fs` / `s3`-stub drivers, off by default
+  (no bucket creds); `extract` persists `file_path`; owner-gated
+  `GET /api/contracts/[id]/original`.
 
-**Wave C (serial):**
-- #7 — collapse the dual state (DB as source of truth)
-- #4 — `contract_versions` snapshots + audit trail + wire the History tab
-- #2 — Export: DOCX + PDF of the current document (references the original once #6 is on)
+**Wave C** ✅ (serial):
+- #7 — deleted `src/lib/contract-store.ts`; the review screen loads and writes
+  only Postgres. Fixed a latent bug (selection-refine edits were localStorage-only).
+- #4 — snapshots on every applied fix / AI edit / manual save; new
+  `GET /api/contracts/[id]/versions/[versionId]`; History tab lists + restores.
+- #2 — Export button → Word/PDF menu; `src/lib/export-contract.ts` builds a
+  `.docx` (real headings/bold/lists) and text-forward `.pdf` from the Quill
+  Delta. `next.config.ts` aliases jspdf's unused optional deps.
+
+### Known follow-ups
+- `reference` (statute citation per clause) is returned by `/api/analyse` but not
+  persisted — needs a `risk_clauses.reference` column + migration.
+- Old contracts saved before the Markdown fix keep literal `**`/`#` in their
+  stored delta (only new drafts render); a one-off re-render/migration could fix.
+- Object storage `s3` driver is a throwing stub — implement or wire `fs` + a bucket.
+- Rate-limit integration test skipped pending an authenticated-session rewrite.
+- Compare / Approval tabs still "coming soon"; orgs/clause-library/playbooks/
+  risk-dashboard/activity remain roadmap (schema kept).

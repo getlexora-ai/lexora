@@ -3,8 +3,9 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { SignInButton, useUser } from "@clerk/nextjs";
-import { ArrowLeft, FileText, CheckCircle2, XCircle, AlertCircle, Lock } from "lucide-react";
+import { ArrowLeft, FileText, CheckCircle2, XCircle, AlertCircle, Lock, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { fileStore } from "@/lib/file-store";
 import { analysisStore } from "@/lib/analysis-store";
 
@@ -225,87 +226,65 @@ function AnalysisContent() {
 
   if (error) {
     return (
-      <div className="flex flex-col min-h-screen">
-        <header className="sticky top-16 z-40 border-b bg-background/80 backdrop-blur-md">
-          <div className="flex h-14 items-center px-8 gap-4">
-            <button
-              onClick={() => router.push("/dashboard")}
-              className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors group"
-            >
-              <ArrowLeft className="h-4 w-4 group-hover:-translate-x-0.5 transition-transform" />
-              Back to Dashboard
-            </button>
-          </div>
-        </header>
-        <main className="flex-1 flex items-center justify-center px-6">
-          <div className="w-full max-w-md text-center space-y-4">
+      <div className="flex min-h-screen flex-col">
+        <AnalysisHeader onBack={() => router.push("/dashboard")} />
+        <main className="flex flex-1 items-center justify-center px-6">
+          <div className="w-full max-w-md space-y-4 text-center">
             <div className="flex justify-center">
-              <AlertCircle className="h-12 w-12 text-destructive" />
+              <span className="grid size-12 place-items-center rounded-full border border-risk-high-line bg-risk-high-soft">
+                <AlertCircle className="size-6 text-risk-high" />
+              </span>
             </div>
-            <h2 className="text-xl font-bold">{rateLimited ? "Usage limit reached" : "Analysis Failed"}</h2>
-            <p className="text-sm text-muted-foreground">{error}</p>
-            {rateLimited && !isSignedIn && (
-              <SignInButton mode="modal">
-                <button className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90">
-                  Sign in for higher limits
-                </button>
-              </SignInButton>
-            )}
-            <Button variant={rateLimited && !isSignedIn ? "outline" : "default"} onClick={() => router.push("/dashboard")}>Back to Dashboard</Button>
+            <h2 className="text-xl font-semibold tracking-[-0.02em]">
+              {rateLimited ? "Usage limit reached" : "Analysis failed"}
+            </h2>
+            <p className="text-[13px] text-text-2">{error}</p>
+            <div className="flex justify-center gap-2">
+              {rateLimited && !isSignedIn && (
+                <SignInButton mode="modal">
+                  <Button size="lg">Sign in for higher limits</Button>
+                </SignInButton>
+              )}
+              <Button
+                size="lg"
+                variant={rateLimited && !isSignedIn ? "outline" : "default"}
+                onClick={() => router.push("/dashboard")}
+              >
+                Back to dashboard
+              </Button>
+            </div>
           </div>
         </main>
+        <ThemeToggle floating />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col min-h-screen">
-      {/* Sub-header */}
-      <header className="sticky top-16 z-40 border-b bg-background/80 backdrop-blur-md">
-        <div className="flex h-14 items-center justify-between px-8">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => router.push("/dashboard")}
-              className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors group"
-            >
-              <ArrowLeft className="h-4 w-4 group-hover:-translate-x-0.5 transition-transform" />
-              Back to Dashboard
-            </button>
-            <div className="h-4 w-px bg-border" />
-            <div className="flex items-center gap-2">
-              <FileText className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-semibold truncate max-w-[320px]">{fileName}</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            {contractType && (
-              <span className="rounded bg-muted px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                {contractType}
-              </span>
-            )}
-            <span className="rounded bg-muted px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-              Draft Mode
-            </span>
-          </div>
-        </div>
-      </header>
+    <div className="flex min-h-screen flex-col">
+      <AnalysisHeader
+        onBack={() => router.push("/dashboard")}
+        fileName={fileName}
+        contractType={contractType}
+      />
 
       {/* Centered content */}
-      <main className="flex-1 flex items-start justify-center px-6 py-16">
+      <main className="flex flex-1 items-start justify-center px-6 py-16">
         <div className="w-full max-w-2xl space-y-10">
 
           {/* Title block */}
           <div className="space-y-3">
-            <div className="inline-flex items-center gap-2 rounded-full border border-brand-line bg-brand-soft px-3 py-1 text-xs font-semibold text-brand">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand opacity-75" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-brand" />
+            <div className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 font-mono text-[10px] tracking-[0.1em] text-text-3 uppercase shadow-e1">
+              <span className="relative flex size-1.5">
+                <span className="absolute inline-flex size-full animate-ping rounded-full bg-risk-medium opacity-75" />
+                <span className="relative inline-flex size-1.5 rounded-full bg-risk-medium" />
               </span>
-              AI Analysis in Progress
+              Analysis in progress
             </div>
-            <h2 className="display text-3xl">Reviewing contractual obligations…</h2>
-            <p className="text-muted-foreground text-base">
-              Our engine is extracting clauses and identifying potential risks based on your legal policy.
+            <h2 className="display text-3xl">Reading the contract…</h2>
+            <p className="text-[15px] text-text-2">
+              Lexora is extracting the clauses and marking the language that is
+              commonly negotiated — for your own review.
             </p>
           </div>
 
@@ -313,27 +292,27 @@ function AnalysisContent() {
           <div className="panel overflow-hidden">
 
             {/* Progress bar */}
-            <div className="border-b border-border bg-muted/30 px-8 py-6">
-              <div className="flex items-end justify-between mb-3">
+            <div className="border-b border-border bg-surface-2 px-8 py-6">
+              <div className="mb-3 flex items-end justify-between">
                 <div className="space-y-1">
-                  <span className="eyebrow">
-                    Overall Completion
-                  </span>
-                  <p className="text-3xl font-semibold tracking-tight" data-numeric>{progress}%</p>
+                  <span className="eyebrow">Overall completion</span>
+                  <p className="text-3xl font-semibold tracking-tight tabular-nums" data-numeric>{progress}%</p>
                 </div>
                 {done ? (
-                  <span className="rounded-full border border-risk-ok-line bg-risk-ok-soft px-2.5 py-1 text-xs font-semibold text-risk-ok">
-                    Analysis Complete
+                  <span className="pill pill-low">
+                    <i />
+                    Analysis complete
                   </span>
                 ) : (
-                  <span className="text-xs text-muted-foreground italic">
+                  <span className="font-mono text-[11px] text-text-3">
                     Processing your document…
                   </span>
                 )}
               </div>
-              <div className="h-2.5 w-full overflow-hidden rounded-full bg-secondary">
+              {/* Graphite fill, not blue: brand is reserved for links and focus. */}
+              <div className="h-2.5 w-full overflow-hidden rounded-full bg-surface-3">
                 <div
-                  className="h-full rounded-full bg-brand transition-all duration-700 ease-in-out"
+                  className="h-full rounded-full bg-[image:var(--btn-primary)] transition-[width] duration-700 ease-in-out"
                   style={{ width: `${progress}%` }}
                 />
               </div>
@@ -350,13 +329,13 @@ function AnalysisContent() {
                     )}
                   </div>
                   <div className="flex-1 pt-1 pb-2">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <h4 className={`text-sm font-semibold ${step.status === "pending" ? "text-muted-foreground" : ""}`}>
+                    <div className="mb-1.5 flex items-center justify-between gap-3">
+                      <h4 className={`text-[13.5px] font-semibold ${step.status === "pending" ? "text-text-3" : ""}`}>
                         {step.label}
                       </h4>
                       <StatusBadge status={step.status} />
                     </div>
-                    <p className={`text-sm ${step.status === "pending" ? "text-muted-foreground/40" : "text-muted-foreground"}`}>
+                    <p className={`text-[13px] ${step.status === "pending" ? "text-text-3" : "text-text-2"}`}>
                       {step.description}
                     </p>
                   </div>
@@ -364,21 +343,21 @@ function AnalysisContent() {
               ))}
             </div>
 
-            {/* Sign-in-to-save prompt */}
+            {/* Sign-in-to-save prompt. Was raw amber-* utilities, which have no
+                dark-mode value and rendered as near-white on the dark ground —
+                now on the medium-risk tokens, which track the theme. */}
             {done && !contractId && (pendingSave || saving) && (
-              <div className="border-t bg-amber-50 px-8 py-4">
+              <div className="border-t border-risk-medium-line bg-risk-medium-soft px-8 py-4">
                 {saving ? (
-                  <p className="text-sm font-medium text-amber-800">Saving your contract…</p>
+                  <p className="text-[13px] font-medium text-foreground">Saving your contract…</p>
                 ) : (
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 text-sm text-amber-900">
-                      <Lock className="h-4 w-4 shrink-0" />
+                    <div className="flex items-center gap-2 text-[13px] text-foreground">
+                      <Lock className="size-4 shrink-0 text-risk-medium" />
                       <span>This analysis won&apos;t be saved. Sign in to keep it and edit it later.</span>
                     </div>
                     <SignInButton mode="modal">
-                      <button className="rounded-md bg-amber-600 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-amber-700">
-                        Sign in to save
-                      </button>
+                      <Button size="sm">Sign in to save</Button>
                     </SignInButton>
                   </div>
                 )}
@@ -386,36 +365,64 @@ function AnalysisContent() {
             )}
 
             {/* Footer */}
-            <div className="border-t border-border bg-muted/30 px-8 py-4 flex items-center justify-between">
-              <p className="text-xs text-muted-foreground">
+            <div className="flex items-center justify-between border-t border-border bg-surface-2 px-8 py-4">
+              <p className="font-mono text-[11px] text-text-3">
                 {completeCount} of {steps.length} steps complete
               </p>
               {done ? (
                 <Button
-                  size="sm"
-                  className="gap-2 bg-brand text-brand-foreground hover:bg-brand/90"
                   onClick={() => router.push(`/review?file=${encodeURIComponent(fileName)}&type=${encodeURIComponent(contractType)}${contractId ? `&contractId=${contractId}` : ""}`)}
                 >
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-foreground opacity-75" />
-                    <span className="relative inline-flex h-2 w-2 rounded-full bg-brand-foreground" />
-                  </span>
-                  Refine with AI
+                  <Sparkles className="size-4" />
+                  Open the review
                 </Button>
               ) : (
                 <button
                   onClick={() => router.push("/dashboard")}
-                  className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-destructive transition-colors"
+                  className="flex items-center gap-1.5 text-[11.5px] font-semibold text-text-3 transition-colors hover:text-risk-high"
                 >
-                  <XCircle className="h-3.5 w-3.5" />
-                  Cancel Analysis
+                  <XCircle className="size-3.5" />
+                  Cancel analysis
                 </button>
               )}
             </div>
           </div>
         </div>
       </main>
+      <ThemeToggle floating />
     </div>
+  );
+}
+
+/** Shared sub-header for both the running and the failed state. */
+function AnalysisHeader({
+  onBack,
+  fileName,
+  contractType,
+}: {
+  onBack: () => void;
+  fileName?: string;
+  contractType?: string;
+}) {
+  return (
+    <header className="sticky top-0 z-40 flex h-13 items-center gap-2.5 border-b border-border bg-[color-mix(in_oklab,var(--bg)_82%,transparent)] px-4 backdrop-blur-md">
+      <Button variant="outline" size="icon-sm" aria-label="Back to dashboard" onClick={onBack}>
+        <ArrowLeft className="size-3.5" />
+      </Button>
+      {fileName && (
+        <div className="flex min-w-0 items-center gap-2 text-[13px] font-semibold">
+          <FileText className="size-4 shrink-0 text-text-3" aria-hidden />
+          <span className="truncate">{fileName}</span>
+        </div>
+      )}
+      <span className="flex-1" />
+      {contractType && (
+        <span className="pill pill-none">
+          <i />
+          {contractType}
+        </span>
+      )}
+    </header>
   );
 }
 
@@ -430,46 +437,38 @@ export default function AnalysisPage() {
 function StepIcon({ status, index }: { status: StepStatus; index: number }) {
   if (status === "complete") {
     return (
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-risk-ok-line bg-risk-ok-soft">
-        <CheckCircle2 className="h-5 w-5 text-risk-ok" fill="currentColor" />
+      <div className="grid size-9 shrink-0 place-items-center rounded-full border border-risk-low-line bg-risk-low-soft">
+        <CheckCircle2 className="size-4.5 text-risk-low" />
       </div>
     );
   }
   if (status === "active") {
     return (
-      <span className="relative flex h-9 w-9 shrink-0 items-center justify-center">
-        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand opacity-20" />
-        <span className="relative flex h-9 w-9 items-center justify-center rounded-full bg-brand text-brand-foreground text-xs font-bold">
+      <span className="relative grid size-9 shrink-0 place-items-center">
+        <span className="absolute inline-flex size-full animate-ping rounded-full bg-risk-medium opacity-20" />
+        {/* Graphite, not blue — the running step is a primary surface. */}
+        <span className="btn-graphite relative grid size-9 place-items-center rounded-full text-xs font-bold">
           {index}
         </span>
       </span>
     );
   }
   return (
-    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 border-border bg-muted text-xs font-bold text-muted-foreground">
+    <div className="grid size-9 shrink-0 place-items-center rounded-full border border-border bg-surface-2 text-xs font-bold text-text-3">
       {index}
     </div>
   );
 }
 
+/** Mono, uppercase, hairline — the metadata register, one object per state. */
 function StatusBadge({ status }: { status: StepStatus }) {
   if (status === "complete") {
-    return (
-      <span className="rounded border border-risk-ok-line bg-risk-ok-soft px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-risk-ok">
-        Complete
-      </span>
-    );
+    return <span className="rk rk-low shrink-0">Complete</span>;
   }
   if (status === "active") {
-    return (
-      <span className="rounded border border-brand-line bg-brand-soft px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand">
-        In Progress
-      </span>
-    );
+    return <span className="rk rk-med shrink-0">In progress</span>;
   }
   return (
-    <span className="rounded border border-border bg-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-      Pending
-    </span>
+    <span className="rk shrink-0 text-text-3">Pending</span>
   );
 }

@@ -525,6 +525,7 @@
       var(--hlc) 92%,
       transparent 92%
     );
+    background-repeat: no-repeat;
     border-radius: 1px;
     padding: 0 0.04em;
   }
@@ -536,6 +537,98 @@
   }
   .hl-low {
     --hlc: color-mix(in oklab, var(--low) 32%, transparent);
+  }
+
+  /* Marker draw-on. The stroke grows left-to-right, staggered per mark via
+     --d, so the eye follows the analysis in reading order. With reduced motion
+     the mark is simply present from the first frame — no from-state at all. */
+  @media (prefers-reduced-motion: no-preference) {
+    .hl-draw {
+      background-size: 0% 100%;
+      transition: background-size 0.5s cubic-bezier(0.2, 0.7, 0.2, 1);
+      transition-delay: var(--d, 0s);
+    }
+    .hl-draw.is-lit {
+      background-size: 100% 100%;
+    }
+  }
+
+  /* Risk tag — a hairline capsule in the risk hue, mono and uppercase, used
+     beside clause headings where a filled pill would fight the document. */
+  .rk {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    border-radius: var(--r-pill);
+    border: 1px solid currentColor;
+    white-space: nowrap;
+  }
+  .rk-high {
+    color: var(--high);
+  }
+  .rk-med {
+    color: var(--med);
+  }
+  .rk-low {
+    color: var(--low);
+  }
+
+  /* Superscript cross-reference tying a flagged phrase to its review card. */
+  .cref {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 600;
+    vertical-align: super;
+    margin-left: 2px;
+    padding: 0 3px;
+    border-radius: 3px;
+  }
+  .cref-high {
+    color: var(--high);
+    background: var(--high-bg);
+  }
+  .cref-med {
+    color: var(--med);
+    background: var(--med-bg);
+  }
+  .cref-low {
+    color: var(--low);
+    background: var(--low-bg);
+  }
+
+  /* Segmented control — one recessed track, the selected item raised out of
+     it. The same object on the dashboard filter, the editor tabs and the
+     pricing billing switch, so a "pick one" always looks the same. */
+  .seg {
+    display: inline-flex;
+    padding: 3px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    box-shadow: var(--hl-top);
+  }
+  .seg-btn {
+    border: 0;
+    background: transparent;
+    color: var(--text-2);
+    font-size: 12.5px;
+    font-weight: 500;
+    padding: 5px 10px;
+    border-radius: var(--r-xs);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color 120ms ease;
+  }
+  .seg-btn:hover {
+    color: var(--text);
+  }
+  .seg-btn[aria-selected="true"],
+  .seg-btn[data-on="true"] {
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: var(--hl-top), var(--shadow-sm);
   }
 
   /* Redline pair. */
@@ -714,8 +807,10 @@
   color: var(--text-2);
   background: var(--paper);
   white-space: pre-wrap;
-  max-width: 760px;
-  margin: clamp(18px, 4vw, 40px) auto;
+  /* Matches the editor artifact's `.page`: a 720px sheet with the doc-pane
+     gutter around it. Measure beats fill for contract prose. */
+  max-width: 720px;
+  margin: clamp(18px, 4vw, 44px) auto;
   width: calc(100% - clamp(28px, 8vw, 80px));
   border: 1px solid var(--border);
   border-radius: var(--r-lg);

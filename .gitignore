@@ -45,3 +45,6 @@ next-env.d.ts
 .agents/
 .claude/
 skills-lock.json
+
+# RAG local vector store (rebuild with: node scripts/rag-ingest.mjs)
+/data/rag/*.json

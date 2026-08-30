@@ -31,6 +31,10 @@ create type org_member_role   as enum ('owner', 'admin', 'editor', 'viewer');
 create type approval_status   as enum ('pending', 'approved', 'rejected');
 create type chat_role         as enum ('user', 'assistant');
 
+-- Clause library (see db/006_clause_library.sql)
+create type clause_library_source as enum ('curated', 'user', 'imported');
+create type clause_posture        as enum ('preferred', 'fallback', 'walk_away');
+
 
 -- ============================================================
 -- organisations
@@ -172,23 +176,69 @@ create index chat_messages_contract_id_idx on chat_messages (contract_id, create
 
 
 -- ============================================================
--- clause_library
+-- clause_library — reusable, statute-anchored clause WORDING.
+-- Grown by db/006_clause_library.sql. Seeded from the RAG corpus'
+-- Musterformulierung blocks (scripts/seed-library.mjs).
+--
+-- user_id NULL  => system-curated, visible to every user, immutable via the API.
+-- user_id set   => owned by that Clerk user.
+-- is_approved   => a licensed lawyer has reviewed this wording (RDG control).
 -- ============================================================
 create table clause_library (
   id              uuid primary key default gen_random_uuid(),
-  user_id         text not null,
+  user_id         text,                                    -- NULL = system-curated
   org_id          uuid references organisations (id) on delete cascade,
 
+  -- German is the legally authoritative text; *_en is an optional mirror that
+  -- keeps German statutory citations verbatim.
   title           text not null,
-  clause_type     text not null,
   content         text not null,
-  jurisdiction    text not null default 'Global',
-  contract_types  text[] not null default '{}',
+  title_en        text,
+  content_en      text,
+  summary         text,                                    -- one line, list view
 
-  created_at      timestamptz not null default now()
+  clause_type     text not null,                           -- src/lib/clause-taxonomy.ts key
+  reference       text,                                    -- "§ 551 Abs. 1 BGB"
+  jurisdiction    text not null default 'DE',
+  contract_types  text[] not null default '{}',
+  tags            text[] not null default '{}',
+
+  source          clause_library_source not null default 'user',
+  posture         clause_posture        not null default 'preferred',
+  doc_ref         text,                                    -- corpus provenance; unique for curated rows
+
+  is_approved     boolean not null default false,
+  approved_by     text,
+  approved_at     timestamptz,
+
+  embedding       vector(768),                             -- gemini-embedding-001, matches rag_chunks
+  embedded_at     timestamptz,
+
+  deleted_at      timestamptz,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now()
 );
 
+-- A curated row has no owner; every other row must have one.
+alter table clause_library
+  add constraint clause_library_owner_ck
+  check ((source = 'curated') = (user_id is null));
+
 create index clause_library_user_id_idx on clause_library (user_id, clause_type);
+create unique index clause_library_curated_ref_idx
+  on clause_library (doc_ref) where source = 'curated';
+create index clause_library_type_idx
+  on clause_library (clause_type) where deleted_at is null;
+create index clause_library_tags_idx on clause_library using gin (tags);
+create index clause_library_embedding_idx
+  on clause_library using hnsw (embedding vector_cosine_ops);
+create index clause_library_fts_idx on clause_library using gin (
+  to_tsvector('german', coalesce(title,'') || ' ' || coalesce(summary,'') || ' ' || coalesce(content,''))
+);
+
+create trigger clause_library_updated_at
+  before update on clause_library
+  for each row execute function set_updated_at();
 
 
 -- ============================================================

@@ -21,7 +21,9 @@ Legal contracts are dense, time-consuming, and easy to get wrong. Missing a liab
 | Review Editor | Side-by-side Quill rich text editor and AI risk card panel with one-click clause replacement |
 | Persistent Contracts | Every analysed contract is saved locally — re-open, edit, and continue fixing at any time |
 | AI Fix Tracking | Green-highlighted replacements persist across sessions; fixed clause count synced to the dashboard |
-| Clause Library | (Coming soon) Saved and approved clause templates |
+| Clause Library | Reusable, statute-anchored German lease clause wording — ~33 curated clauses seeded from the RAG corpus, plus your own. Filter by topic/posture, lexical search, lawyer-reviewed flag (RDG). `/clauses` |
+| Templates | (Coming soon) Contract skeletons that drive generation |
+| Playbooks | (Coming soon) Per-clause review positions (accept / fallback / redline) that grade the analysis |
 | Policies | (Coming soon) Company-level legal policy configuration |
 
 ## Tech Stack

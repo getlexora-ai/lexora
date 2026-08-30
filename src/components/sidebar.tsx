@@ -30,7 +30,7 @@ type NavItem = {
 
 const WORKSPACE_NAV: NavItem[] = [
   { label: "Contracts", icon: FileText, href: "/dashboard" },
-  { label: "Clause library", icon: BookOpen, href: "/clauses", soon: true },
+  { label: "Clause library", icon: BookOpen, href: "/clauses" },
   { label: "Templates", icon: LayoutGrid, href: "/templates", soon: true },
   { label: "Playbooks", icon: Shield, href: "/playbooks", soon: true },
 ];

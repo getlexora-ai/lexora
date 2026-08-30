@@ -45,7 +45,7 @@ const RISK_STYLES: Record<Risk, { rail: string; pill: string; label: string }> =
 const RAIL = [
   { icon: LayoutGrid, label: "Home", href: "/dashboard" },
   { icon: FileText, label: "Contracts", href: "/dashboard", on: true },
-  { icon: BookOpen, label: "Clause library" },
+  { icon: BookOpen, label: "Clause library", href: "/clauses" },
   { icon: BarChart3, label: "Risk dashboard" },
 ];
 

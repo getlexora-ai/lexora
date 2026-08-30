@@ -12,7 +12,7 @@ Verified against `main` @ `bf4d660`.
 
 Templates feed generation. With **no** free-text key terms the create-contract modal renders the `body` deterministically — pure `{{key}}` substitution, no AI ([B9](b-getting-a-contract-in.md#b9)). With key terms it injects the rendered `body` into the LLM prompt as a _binding structure_ ([B8](b-getting-a-contract-in.md#b8)). The render engine itself (`src/lib/templates/render.ts` — `{{key}}` substitution, `{{section:key}}` line-pruning, the whitelist arithmetic evaluator for `derived` vars, `formatEur`) is documented in [B9](b-getting-a-contract-in.md#b9); this file is about **managing** templates, not rendering them.
 
-**Two visibility classes** (same as the [clause library](d-clause-library.md)): a signed-in user sees their own rows (`t.user_id = <clerk id>`) plus every curated row (`t.user_id is null`); curated rows are read-only, re-checked with `ownsTemplate` (`src/lib/auth.ts:57-63`). Signed-out → empty list — except `/api/templates/suggest-variables`, which is compute-gated.
+**Two visibility classes** (same as the [clause library](d-clause-library.md)): a signed-in user sees their own rows (`t.user_id = <clerk id>`) plus every curated row (`t.user_id is null`); curated rows are read-only, re-checked with `ownsTemplate` (`src/lib/auth.ts:55-62`). Signed-out → empty list — except `/api/templates/suggest-variables`, which is compute-gated.
 
 | id | Workflow |
 |----|----------|
@@ -39,16 +39,16 @@ GET /api/templates · auth: currentUserId · limit: none
   req  ?contract_type &source=curated|user &language &q &limit &offset
   res  { templates: ContractTemplate[], total }   |   signed out → { templates: [], total: 0 }
 ```
-1. `route.ts:14-26` — parse; `source` coerced to `"curated" | "user"` or dropped.
-2. `route.ts:19` — `listTemplates({ userId, contractType, source, language, q, limit, offset })` (`src/lib/contract-templates.ts:76`).
+1. `route.ts:11-25` — parse; `source` coerced to `"curated" | "user"` or dropped (`:20`).
+2. `route.ts:17` — `listTemplates({ userId, contractType, source, language, q, limit, offset })` (`src/lib/contract-templates.ts:76`).
 3. `contract-templates.ts:84-85` — visibility: `(t.user_id = $1 or t.user_id is null)`.
 4. `:87-90` — optional `t.contract_type = $n`, `t.source = $n`, `t.language = $n`.
 5. `:92-94` — `q` branch: `(t.name ilike $like or t.name_en ilike $like or t.description ilike $like)` with `$like = "%" + q.trim() + "%"`. There is **no** full-text index on `contract_templates` — this is a sequential `ILIKE` scan (`contract_templates` indexes are `user_id`, `contract_type`, `tags`, and the curated `doc_ref` unique — `db/schema.sql:308-314`).
-6. `:96-99` — `select count(*)` for `total`.
-7. `:102-109` — `select <COLUMNS> from contract_templates t where <where> order by t.is_approved desc, t.updated_at desc limit $n offset $n`. `limit` clamped `1..200` (default 100). `COLUMNS` (`:56-61`) computes `(user_id is null) as readonly`.
-8. `route.ts:27` — `{ templates, total }`. The page renders `<TemplateCard>` per row (`page.tsx:137-152`): name, `contract_type` pill, `language` chip, `sections.length` §-clauses + `variables.length` vars, `<ApprovalBadge>`, and "Use" / "Preview" / "Edit" buttons ("Edit" only when `!readonly`).
+6. `:98-101` — `select count(*)` for `total`.
+7. `:105-112` — `select <COLUMNS> from contract_templates t where <where> order by t.is_approved desc, t.updated_at desc limit $n offset $n`. `limit` clamped `1..200` (default 100). `COLUMNS` (`:56-61`) computes `(user_id is null) as readonly`.
+8. `route.ts:26` — `{ templates, total }`. The page renders `<TemplateCard>` per row (`page.tsx:137-152`): name, `contract_type` pill, `language` chip, `sections.length` §-clauses + `variables.length` vars, `<ApprovalBadge>`, and "Use" / "Preview" / "Edit" buttons ("Edit" only when `!readonly`).
 
-**4 · Database effects** — Read-only. `contract_templates` — count + page `SELECT` (`contract-templates.ts:97`, `:104`). No transaction. See [H6](h6-database-schema.md#tables).
+**4 · Database effects** — Read-only. `contract_templates` — count + page `SELECT` (`contract-templates.ts:99`, `:106`). No transaction. See [H6](h6-database-schema.md#tables).
 
 **7 · Failure modes**
 
@@ -205,9 +205,9 @@ flowchart TD
 
 **0 · TL;DR** — `TemplateEditor` POSTs a user-owned template (`source='user'`, `is_approved=false`) or PATCHes the editable fields of one the caller owns; the editor never sends `sections`. Curated rows are read-only — a write to one 403s. Delete is a soft-delete.
 
-**1 · Entry point** — `/templates` — `src/components/templates/template-editor.tsx`. "New template" (`templates/page.tsx:92`) opens it with `template == null`; the card's "Edit" button (only rendered when `!readonly`, `template-card.tsx:60-64`) opens it on that row. The body `<textarea>` has a row of `+ {{var}}` inserter buttons, one per declared variable (`template-editor.tsx:158-167`, `insertPlaceholder` `:56-67`); `sections` are shown **read-only** (`:177-188`); the variables editor supports `derived` with a per-row `expr` input (`:238-248`). `save()` (`:73-106`) → `POST /api/templates` or `PATCH /api/templates/{id}`. Handlers: `src/app/api/templates/route.ts:35` (`POST`), `src/app/api/templates/[id]/route.ts:25` (`PATCH`), `:57` (`DELETE`).
+**1 · Entry point** — `/templates` — `src/components/templates/template-editor.tsx`. "New template" (`templates/page.tsx:92`) opens it with `template == null`; the card's "Edit" button (only rendered when `!readonly`, `template-card.tsx:60-64`) opens it on that row. The body `<textarea>` has a row of `+ {{var}}` inserter buttons, one per declared variable (`template-editor.tsx:158-167`, `insertPlaceholder` `:56-67`); `sections` are shown **read-only** (`:177-188`); the variables editor supports `derived` with a per-row `expr` input (`:238-248`). `save()` (`:73-106`) → `POST /api/templates` or `PATCH /api/templates/{id}`. Handlers: `src/app/api/templates/route.ts:33` (`POST`), `src/app/api/templates/[id]/route.ts:25` (`PATCH`), `:57` (`DELETE`).
 
-**2 · Preconditions** — Signed in — all three call `signInRequired()` when there is no user (`route.ts:37`, `[id]/route.ts:27`, `:59`). Not gated, not rate-limited. `PATCH` / `DELETE` require `ownsTemplate(id, userId)` (`src/lib/auth.ts:57-63` — false for a curated row).
+**2 · Preconditions** — Signed in — all three call `signInRequired()` when there is no user (`route.ts:34-35`, `[id]/route.ts:27-28`, `:59-60`). Not gated, not rate-limited. `PATCH` / `DELETE` require `ownsTemplate(id, userId)` (`src/lib/auth.ts:55-62` — false for a curated row).
 
 **3 · Trace**
 ```
@@ -226,24 +226,24 @@ DELETE /api/templates/{id} · auth: ownsTemplate · limit: none
 ```
 
 **Create**
-1. `route.ts:35-37` — `signInRequired()` if no user.
+1. `route.ts:34-35` — `signInRequired()` if no user.
 2. `:44-59` — validate: `name`, `contract_type`, non-blank `body` all required (400 otherwise); `language` defaults to `"de"`, must be `"de"` or `"en"` (400 otherwise).
 3. `:68-78` — `createTemplate(userId, { name, contract_type, body, language, name_en, description, sections, variables, tags })` (`src/lib/contract-templates.ts:143`):
-   - `insert into contract_templates (user_id, name, name_en, description, contract_type, language, body, body_en, sections, variables, tags, based_on_contract_id, source) values ($1..$8, $9::jsonb, $10::jsonb, $11, $12, 'user') returning <COLUMNS>` (`:145-166`).
+   - `insert into contract_templates (user_id, name, name_en, description, contract_type, language, body, body_en, sections, variables, tags, based_on_contract_id, source) values ($1..$8, $9::jsonb, $10::jsonb, $11, $12, 'user') returning <COLUMNS>` (`:145-164`).
    - `sections` / `variables` are `JSON.stringify`-ed and cast `::jsonb`; **`source` is the literal `'user'`**; `is_approved` is the DB default `false`; `based_on_contract_id` is null (only [E5](#e5) sets it).
    - ⚠ The editor's `save()` payload sends only `name`, `contract_type`, `description`, `language`, `body`, `tags`, `variables` (`template-editor.tsx:76-84`) — **no `sections`, no `name_en`, no `body_en`** — so a template made in the UI has an empty `sections` index.
 4. `route.ts:79` — `201 { template }`; the page prepends it to the grid (`templates/page.tsx:53-63`).
 
 **Edit**
 1. `[id]/route.ts:29-34` — `ownsTemplate(id, userId)`. On false, `getTemplate(id, userId)`: visible + `readonly` → `403 { error: "curated templates are read-only" }` (`CURATED_READONLY`, `:7`); else `404`.
-2. `:41-46` — parse; a `language` present but not `"de"`/`"en"` → 400.
-3. `:49` — `updateTemplate(id, userId, body)` (`contract-templates.ts:180`): iterate `body`; only keys in `EDITABLE` (`:169-172` — includes `sections`, `variables`, `is_approved`) become `SET` fragments; `sections` / `variables` are re-serialised and cast `::jsonb` (`JSONB_COLS`, `:173`); `is_approved` truthy → also `approved_by = $userId`, `approved_at = now()`, falsy → both nulled; `update contract_templates set <sets> where id = $n-1 and user_id = $n and deleted_at is null returning <COLUMNS>` (`:214-217`). The `contract_templates_updated_at` trigger bumps `updated_at` (`db/schema.sql:316-318`).
-4. `[id]/route.ts:50-52` — `{ template }`, or 404 if nothing matched.
+2. `:36-45` — parse; a `language` present but not `"de"`/`"en"` → 400.
+3. `:48` — `updateTemplate(id, userId, body)` (`contract-templates.ts:180`): iterate `body`; only keys in `EDITABLE` (`:169-172` — includes `sections`, `variables`, `is_approved`) become `SET` fragments; `sections` / `variables` are re-serialised and cast `::jsonb` (`JSONB_COLS`, `:173`); `is_approved` truthy → also `approved_by = $userId`, `approved_at = now()`, falsy → both nulled; `update contract_templates set <sets> where id = $n-1 and user_id = $n and deleted_at is null returning <COLUMNS>` (`:214-216`). The `contract_templates_updated_at` trigger bumps `updated_at` (`db/schema.sql:316-318`).
+4. `[id]/route.ts:49-50` — `{ template }`, or 404 if nothing matched.
 
 **Soft-delete**
-1. `[id]/route.ts:60-65` — same `ownsTemplate` → 403 / 404 gate.
-2. `:67` — `softDeleteTemplate(id, userId)` (`contract-templates.ts:222`): `update contract_templates set deleted_at = now() where id = $1 and user_id = $2 and deleted_at is null returning id`.
-3. `:68` — `{ ok: true }` regardless of match. `contracts.template_id` FK is `on delete set null` (`db/schema.sql:322-324`) — but this is a **soft** delete, so the row stays and the FK is never triggered.
+1. `[id]/route.ts:62-66` — same `ownsTemplate` → 403 / 404 gate.
+2. `:69` — `softDeleteTemplate(id, userId)` (`contract-templates.ts:222`): `update contract_templates set deleted_at = now() where id = $1 and user_id = $2 and deleted_at is null returning id`.
+3. `:70` — `{ ok: true }` regardless of match. `contracts.template_id` FK is `on delete set null` (`db/schema.sql:322-324`) — but this is a **soft** delete, so the row stays and the FK is never triggered.
 
 **4 · Database effects** — `contract_templates`: 1 `INSERT` (`source='user'`, `is_approved=false`) / 1 dynamic `UPDATE` (+ `updated_at` trigger) / 1 soft-delete `UPDATE`. Each is a single statement, no transaction. Owner-check constraint `contract_templates_owner_ck` (`db/schema.sql:304-306`) enforces `(source = 'curated') = (user_id is null)`. See [H6](h6-database-schema.md#tables).
 
@@ -256,7 +256,7 @@ DELETE /api/templates/{id} · auth: ownsTemplate · limit: none
 | Missing `name` / `contract_type` / `body` on create | 400 (`route.ts:47`) | error string in the editor | nothing |
 | Invalid `language` | 400 (`route.ts:56`, `[id]/route.ts:43`) | error string | nothing |
 | Edit a UI-created template's `sections` | impossible from the editor (never sent, and shown read-only); only a direct PATCH can (`sections` is in `EDITABLE`) | sections frozen at whatever create set (empty for UI-made) | n/a |
-| DB throw on any route | `catch` → `{ error: <raw DB message> }` 500 ([H3](h3-error-taxonomy.md) LEAK), no `console.error` (`route.ts:79`, `[id]/route.ts:51`, `:69`) | raw message in the editor error line | depends |
+| DB throw on any route | `catch` → `{ error: <raw DB message> }` 500 ([H3](h3-error-taxonomy.md) LEAK), no `console.error` (`route.ts:80-82`, `[id]/route.ts:51-53`, `:71-73`) | raw message in the editor error line | depends |
 
 **8 · Sequence diagram**
 
@@ -304,15 +304,15 @@ sequenceDiagram
 
 **0 · TL;DR** — A dialog that turns a contract into a reusable template — regex- and LLM-suggested `literal → {{key}}` replacements over the contract's flattened text, then `POST /api/templates/from-contract`. Both routes are live and correct, but **no component mounts `SaveAsTemplateDialog`**, so a user cannot start this flow from the app today — it is reachable only by direct HTTP.
 
-**1 · Entry point** — ⚠ **There is no live UI entry point.** `src/components/templates/save-as-template-dialog.tsx:42` exports `SaveAsTemplateDialog`; `grep -rn "SaveAsTemplate" src` returns only that definition line — it is never imported or rendered anywhere. The `/templates` empty-state copy ("…or open a contract and choose "Save as template"", `templates/page.tsx:137`) points at a flow that has no trigger. The only ways to invoke this workflow are direct requests to:
-- `POST /api/templates/from-contract` — `src/app/api/templates/from-contract/route.ts:14`
-- `POST /api/templates/suggest-variables` — `src/app/api/templates/suggest-variables/route.ts:33`
+**1 · Entry point** — ⚠ **There is no live UI entry point.** `src/components/templates/save-as-template-dialog.tsx:42` exports `SaveAsTemplateDialog`; `grep -rn "SaveAsTemplate" src` returns only that definition line — it is never imported or rendered anywhere. The `/templates` empty-state copy ("…or open a contract and choose "Save as template"", `templates/page.tsx:139`) points at a flow that has no trigger. The only ways to invoke this workflow are direct requests to:
+- `POST /api/templates/from-contract` — `src/app/api/templates/from-contract/route.ts:13`
+- `POST /api/templates/suggest-variables` — `src/app/api/templates/suggest-variables/route.ts:32`
 
 The dialog described in §3 documents the **intended** UI, not a shipping one.
 
 **2 · Preconditions** — Signed in for both.
-- `from-contract`: `signInRequired()` (`route.ts:15-16`), then `ownsContract(contractId, userId)` → 404 if not (`:28-30`). **Not** compute-gated, **not** rate-limited — it makes no external call.
-- `suggest-variables`: in [`GATED_COMPUTE_PATHS`](h1-auth-and-ownership.md#gate) (`src/proxy.ts:20`) — a guest POST 401s at the middleware. In the handler, `enforceRateLimit(req, "template-vars")` runs first (`route.ts:35-36`), then `signInRequired()` (`:38-39`), then `ownsContract` → 404 (`:47-49`). Rate tier `template-vars` = 15/h · 40/d, plus global `compute` 200/h · 600/d ([H2](h2-rate-limiting.md#tiers)).
+- `from-contract`: `signInRequired()` (`route.ts:14-15`), then `ownsContract(contractId, userId)` → 404 if not (`:29-31`). **Not** compute-gated, **not** rate-limited — it makes no external call.
+- `suggest-variables`: in [`GATED_COMPUTE_PATHS`](h1-auth-and-ownership.md#gate) (`src/proxy.ts:20`) — a guest POST 401s at the middleware. In the handler, `enforceRateLimit(req, "template-vars")` runs first (`route.ts:34-35`), then `signInRequired()` (`:37-38`), then `ownsContract` → 404 (`:48-50`). Rate tier `template-vars` = 15/h · 40/d, plus global `compute` 200/h · 600/d ([H2](h2-rate-limiting.md#tiers)).
 
 **3 · Trace** — two independent routes.
 
@@ -327,7 +327,7 @@ POST /api/templates/suggest-variables · auth: proxy-gated · limit: template-va
 3. `:40-50` — parse `contractId` (400 `missing_contract` if absent, `:47`); `ownsContract` → 404 `not_found` (`:48-50`).
 4. `:52-60` — `select quill_delta, extracted_text from contracts where id = $1 and user_id = $2 and deleted_at is null`; flatten to text: `(quill_delta ? deltaToText(quill_delta) : extracted_text ?? "").trim()` (`src/lib/delta-text.ts`); 400 `empty_contract` if blank (`:60`).
 5. `:62-75` — German prompt: extract the spans that _vary between contracts_ (party names, addresses, EUR amounts, dates, deadlines, IBAN, areas, counts). Rules baked into the prompt: `literal` must be a verbatim, unique, minimal substring; `key` is camelCase; `type ∈ text | textarea | number | date | currency`; ≤ 20 entries. Input is `text.slice(0, 12000)` (`:74`).
-6. `:77-81` — `askLLM({ prompt, maxTokens: 2048, responseSchema: RESPONSE_SCHEMA })`, where the schema requires each item to have `key`, `label`, `type`, `literal` (`:12-31`).
+6. `:77-81` — `askLLM({ prompt, maxTokens: 2048, responseSchema: RESPONSE_SCHEMA })`, where the schema requires each item to have `key`, `label`, `type`, `literal` (`:12-30`).
 7. `:83-88` — `JSON.parse(raw)`; a parse failure → `AppError(502, "llm_parse")`.
 8. `:90-101` — keep only entries whose `literal` occurs verbatim in the **full** contract text (`text.includes(v.literal)`, `:93`) — the handler **drops any `literal` not found verbatim**; sanitise `key` to `\w` (`:95`), default `type` to `text`, cap at 20 (`:101`).
 9. `:103` — `{ variables }`. Any thrown error → `errorResponse(err, "template-vars")` (`:104-105`) — logs server-side, returns a generic message.
@@ -425,7 +425,7 @@ _Operator workflow — the compressed five-section form. No user entry point, no
 **2 · Preconditions** — `DATABASE_URL` in `lexora/.env.local`. `db/007_contract_templates.sql` applied (it creates the `template_source` enum, the table, indexes, and the `contracts.template_id` column; itself requires `db/006`). **`npm run seed:library` must have run first** — `buildTemplate` resolves each `sections[].clause_id` from `clause_library` by `doc_ref = '22-vorlage#pN'` (`scripts/seed-templates.mjs:90-93`) and hard-errors if a lookup misses (`:94-99`). Talks to the DB via `ragQuery` / `endRagPool` (`src/lib/rag/db.ts`).
 
 **3 · Trace**
-1. `seed-templates.mjs:78` — `parseTemplateClauses()` (`src/lib/library/parse-corpus.ts:123`) → doc `22`'s 11 `## § N …` sections, cleaned text.
+1. `seed-templates.mjs:78` — `parseTemplateClauses()` (`src/lib/library/parse-corpus.ts:121`) → doc `22`'s 11 `## § N …` sections, cleaned text.
 2. per section (`:82-110`): `topicForParagraph(para)` (`src/lib/clause-taxonomy.ts`) → the section `key` / `clause_type`; `select id from clause_library where doc_ref = '22-vorlage#p<n>' and source = 'curated' and deleted_at is null` (`:90-93`) → `sections[].clause_id`; hard-error if missing (`:94-99`).
 3. `rewritePlaceholders(para, content)` (`:25-52`) — swap the corpus' `[Adresse, Etage, Lage]`, `[Datum]`, `[Summe]`, `[IBAN]`, `[max. drei Nettokaltmieten]`, … tokens for `{{propertyAddress}}`, `{{startDate}}`, `{{totalRentEur}}`, `{{iban}}`, `{{depositEur}}`, …; the two `[Betrag]` in § 3 are positional — first → `{{baseRentEur}}` (Nettokaltmiete), second → `{{operatingCostsEur}}` (`:38-42`); any leftover `[...]` → hard error (`:44-50`).
 4. `:100-113` — `body` = `### <title>\n\n<text>` joined per section; `sections` = `[{ key, heading, clause_type, clause_id, required }]`, `required` true for §§ 1–3 (`REQUIRED_SECTIONS`, `:54`).

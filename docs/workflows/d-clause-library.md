@@ -6,7 +6,7 @@ Verified against `main` @ `bf4d660`.
 
 **The library is _wording_.** A `clause_library` row is a piece of German contract text you can drop into a document, anchored to a statute (`reference`), filed under one topic key from the shared taxonomy (`src/lib/clause-taxonomy.ts`), carrying a negotiating `posture` (`preferred` / `fallback` / `walk_away`) and an RDG `is_approved` flag. It is **not** a playbook. A playbook ([F](f-playbooks.md)) holds _positions_ — "the deposit must not exceed three net cold rents" — as machine-checkable rules; the library holds the _wording_ that satisfies a position. The only coupling between the two is `playbook_rules.preferred_clause_id` (`db/schema.sql:453`, `on delete set null`): a rule may point at one library clause as its suggested redline. Nothing else joins them.
 
-**Two visibility classes, everywhere.** A signed-in user sees their own rows (`cl.user_id = <clerk id>`) plus every system-curated row (`cl.user_id is null`); curated rows are read-only through the API. Every write re-checks ownership with `ownsLibraryClause` (`src/lib/auth.ts:44-50`). A signed-out caller gets an empty list, never a 401 — except the semantic-search route, which is compute-gated.
+**Two visibility classes, everywhere.** A signed-in user sees their own rows (`cl.user_id = <clerk id>`) plus every system-curated row (`cl.user_id is null`); curated rows are read-only through the API. Every write re-checks ownership with `ownsLibraryClause` (`src/lib/auth.ts:41-48`). A signed-out caller gets an empty list, never a 401 — except the semantic-search route, which is compute-gated.
 
 | id | Workflow |
 |----|----------|
@@ -16,6 +16,8 @@ Verified against `main` @ `bf4d660`.
 | [D4](#d4) | Create / edit / soft-delete |
 | [D5](#d5) | Lawyer-reviewed (RDG) toggle |
 | [D6](#d6) | Curated seeding (operator) |
+
+> One more write path lives outside this file: **"Save to library"** on the review screen (`POST /api/clause-library/from-suggestion` → `saveFromSuggestion` → `createClause(source:'imported')`) is documented as [C7](c2-review-findings.md). It reaches the same `createClause` insert as [D4](#d4), so an imported row is likewise never embedded.
 
 ---
 
@@ -33,15 +35,15 @@ GET /api/clause-library · auth: currentUserId · limit: none
   req  ?type &posture &scope=all|mine|curated &q &tag &approved &limit &offset
   res  { clauses: LibraryClause[], total }   |   signed out → { clauses: [], total: 0 }
 ```
-1. `route.ts:14-18` — parse the query string; `scope` is coerced to `"mine" | "curated"` or falls back to `"all"` (`:22`); `approved` accepts `"1"` or `"true"` (`:25`).
+1. `route.ts:14-29` — parse the query string; `scope` is coerced to `"mine" | "curated"` or falls back to `"all"` (`:23`); `approved` accepts `"1"` or `"true"` (`:26`).
 2. `route.ts:19-29` — `listClauses({ userId, type, posture, scope, q, tag, approvedOnly, limit, offset })` (`src/lib/clause-library.ts:62`).
 3. `clause-library.ts:63` — base predicate `cl.deleted_at is null`.
 4. `:71-74` — visibility: `scope="mine"` → `cl.user_id = $1`; `scope="curated"` → `cl.user_id is null`; else `(cl.user_id = $1 or cl.user_id is null)`.
 5. `:76-79` — optional filters: `cl.clause_type = $n` **only if `isKnownTopic(type)`** (an unrecognised `type` is silently dropped), `cl.posture = $n`, `$n = any(cl.tags)`, `cl.is_approved`.
 6. `:81-91` — the `q` branch ([D2](#d2)); absent here.
 7. `:95-98` — `select count(*)::int as n from clause_library cl where <where>` for `total`.
-8. `:100-109` — `select <COLUMNS> from clause_library cl where <where> order by cl.is_approved desc, cl.updated_at desc limit $n offset $n`. `limit` is clamped to `1..200` (default 50); `offset ≥ 0`. `COLUMNS` (`:38-44`) **never selects `embedding`** and computes `(user_id is null) as readonly`.
-9. `route.ts:30` — `NextResponse.json({ clauses, total })`. The page sets `rows` / `total` and renders the table (`page.tsx:202-249`); each row's `readonly` drives the "Curated / Imported / Mine" source cell and, on click, a read-only `ClauseDialog`.
+8. `:100-109` — `select <COLUMNS> from clause_library cl where <where> order by cl.is_approved desc, cl.updated_at desc limit $n offset $n`. `limit` is clamped to `1..200` (default 50); `offset ≥ 0`. `COLUMNS` (`:39-45`) **never selects `embedding`** and computes `(user_id is null) as readonly`.
+9. `route.ts:30` — `NextResponse.json(result)` (`result` is `{ clauses, total }`). The page sets `rows` / `total` and renders the table (`page.tsx:202-249`); each row's `readonly` drives the "Curated / Imported / Mine" source cell and, on click, a read-only `ClauseDialog`.
 
 **4 · Database effects** — Read-only. `clause_library` — two `SELECT`s (`clause-library.ts:96`, `:102`) against the visibility predicate + filters. No transaction. See [H6](h6-database-schema.md#tables).
 
@@ -51,7 +53,7 @@ GET /api/clause-library · auth: currentUserId · limit: none
 |---------|-----------|-----------|----------|
 | Signed out (race past the panel) | `{ clauses: [], total: 0 }`, HTTP 200 | empty table | n/a |
 | Unknown `type` value | `isKnownTopic` guard drops the filter (`clause-library.ts:76`) | results as if no topic filter | n/a |
-| DB throw in `listClauses` | `catch` → `{ error: <raw DB message> }` 500 (`route.ts:31`) — [H3](h3-error-taxonomy.md) LEAK, no `console.error` | `rows` stays `[]` (page never checks `res.ok`, `page.tsx:74-76`) | n/a |
+| DB throw in `listClauses` | `catch` → `{ error: <raw DB message> }` 500 (`route.ts:31-33`) — [H3](h3-error-taxonomy.md) LEAK, no `console.error` | `rows` stays `[]` (page never checks `res.ok`, `page.tsx:73-76`) | n/a |
 | `limit` / `offset` out of range | clamped, not rejected (`clause-library.ts:100-101`) | a bounded page | n/a |
 
 **8 · Sequence diagram**
@@ -76,7 +78,7 @@ sequenceDiagram
 ```
 
 **9 · Observability notes**
-> **What you can see today.** Nothing on success — no log line, no counter. A `listClauses` throw returns the raw DB message to the client and does **not** `console.error` (`route.ts:31`).
+> **What you can see today.** Nothing on success — no log line, no counter. A `listClauses` throw returns the raw DB message to the client and does **not** `console.error` (`route.ts:31-33`).
 > **What you can't.** Library-browse volume. Which topic / posture / scope combinations users actually filter by. The empty-result rate (a signal that a user's own set is thin). Whether a 500 was a query bug or a transient DB blip.
 >
 > | # | Blind spot | Class | Cheapest fix |
@@ -179,9 +181,9 @@ POST /api/clause-library/search · auth: proxy-gated · limit: clause-search 60/
    - `params = [userId, "[" + queryVec.join(",") + "]"]`; if `isKnownTopic(type)` add `type` as `$3` and `typeFilter = "and cl.clause_type = $3"` (`:264-268`); push `topK` last.
    - `select <COLUMNS>, 1 - (cl.embedding <=> $2::vector) as score from clause_library cl where cl.deleted_at is null and cl.embedding is not null and (cl.user_id = $1 or cl.user_id is null) <typeFilter> order by cl.embedding <=> $2::vector limit $n`.
 8. `:283` — **zero rows → `lexicalFallback()`** (which runs `listClauses({ userId, q, type, limit: topK })`, [D2](#d2), and tags every hit `score: 0, rankScore: 0`, `mode: "lexical"`).
-9. `:285-295` — `rankClauses(rows.map(...), queryTopic)` (`src/lib/library/rank.ts:41`): starts from pgvector's cosine `score`, then `+0.03` if `clause_type === queryTopic`, `−0.05` if `posture === "walk_away"`, `+0.005` if `is_approved`; sorts by `rankScore`, breaking ties by `is_approved` then raw `score`. Unapproved rows are **not** dropped, only demoted.
+9. `:285-295` — `rankClauses(rows.map(...), queryTopic)` (`src/lib/library/rank.ts:40`): starts from pgvector's cosine `score`, then `+0.03` if `clause_type === queryTopic`, `−0.05` if `posture === "walk_away"`, `+0.005` if `is_approved`; sorts by `rankScore`, breaking ties by `is_approved` then raw `score`. Unapproved rows are **not** dropped, only demoted.
 10. `:296-304` — re-join the ranked ids to the full rows, return `{ hits, mode: "semantic" }`.
-11. `route.ts:24` — `NextResponse.json(result)`. A thrown error → `errorResponse(err, "clause-search")` (`:26-27`) — this route **does** log server-side and returns a generic message. The page sets `rows = data.hits ?? []` and shows the "Semantic index unavailable — showing a keyword match instead" hint when `mode === "lexical"` (`page.tsx:196-199`).
+11. `route.ts:26` — `NextResponse.json(result)`. A thrown error → `errorResponse(err, "clause-search")` (`:27-28`) — this route **does** log server-side and returns a generic message. The page sets `rows = data.hits ?? []` and shows the "Semantic index unavailable — showing a keyword match instead" hint when `mode === "lexical"` (`page.tsx:196-199`).
 
 **4 · Database effects** — Read-only. One vector `SELECT` against `clause_library` filtered by `embedding is not null` + visibility (`clause-library.ts:271-281`), or — on fallback — the [D2](#d2) count + page `SELECT`s. The cosine ordering uses the HNSW index `clause_library_embedding_idx` (`db/schema.sql:247-248`). No transaction. See [H6](h6-database-schema.md#tables).
 
@@ -251,7 +253,7 @@ sequenceDiagram
 
 **1 · Entry point** — `/clauses` — `src/components/clauses/clause-dialog.tsx`. "New clause" (`page.tsx:132`) opens it in create mode (`clause == null`); clicking a table row opens it on that row (`page.tsx:85`), read-only if `row.readonly`. `save()` (`clause-dialog.tsx:88-120`) → `POST /api/clause-library` or `PATCH /api/clause-library/{id}`; `remove()` (`:141-153`) → `DELETE /api/clause-library/{id}`. Handlers: `src/app/api/clause-library/route.ts:37` (`POST`), `src/app/api/clause-library/[id]/route.ts:27` (`PATCH`), `:63` (`DELETE`).
 
-**2 · Preconditions** — Signed in — all three call `signInRequired()` when there is no `currentUserId()` (`route.ts:38`, `[id]/route.ts:29`, `:67`). Not compute-gated, not rate-limited. For `PATCH` / `DELETE` the caller must **own** the row: `ownsLibraryClause(id, userId)` (`src/lib/auth.ts:44-50` — true only when `user_id = $2`, i.e. never for a curated row). The dialog hides the editable fields and the Save/Delete buttons when `clause.readonly` (`clause-dialog.tsx:233`, `:245`, `:252`).
+**2 · Preconditions** — Signed in — all three call `signInRequired()` when there is no `currentUserId()` (`route.ts:38-39`, `[id]/route.ts:29-30`, `:65-66`). Not compute-gated, not rate-limited. For `PATCH` / `DELETE` the caller must **own** the row: `ownsLibraryClause(id, userId)` (`src/lib/auth.ts:41-48` — true only when `user_id = $2`, i.e. never for a curated row). The dialog hides the editable fields and the Save/Delete buttons when `clause.readonly` (`clause-dialog.tsx:233`, `:245`, `:252`).
 
 **3 · Trace**
 ```
@@ -270,8 +272,8 @@ DELETE /api/clause-library/{id} · auth: ownsLibraryClause · limit: none
 ```
 
 **Create**
-1. `route.ts:37-38` — `signInRequired()` if no user.
-2. `:47-63` — validate: `title`, `content`, `clause_type` all required and trimmed; `clause_type` must pass `isKnownTopic` else 400; `posture` defaults to `"preferred"`, must be one of `preferred|fallback|walk_away` else 400.
+1. `route.ts:38-39` — `signInRequired()` if no user.
+2. `:48-65` — validate: `title`, `content`, `clause_type` all required and trimmed; `clause_type` must pass `isKnownTopic` else 400; `posture` defaults to `"preferred"`, must be one of `preferred|fallback|walk_away` else 400.
 3. `:71-82` — `createClause(userId, { … , source: body.source === "imported" ? "imported" : "user" })` (`src/lib/clause-library.ts:140`):
    - `insert into clause_library (user_id, title, content, title_en, content_en, summary, clause_type, reference, posture, tags, contract_types, source) values ($1..$12) returning <COLUMNS>` (`:142-146`).
    - **Not written:** `embedding`, `embedded_at`, `is_approved` (DB default `false`), `approved_by/at`, `doc_ref` (null), `jurisdiction` (DB default `'DE'`).
@@ -298,7 +300,7 @@ DELETE /api/clause-library/{id} · auth: ownsLibraryClause · limit: none
 - **Edit** — 1 dynamic `UPDATE` (`:209`); the `clause_library_updated_at` trigger (`db/schema.sql:253-255`) bumps `updated_at` on every update.
 - **Delete** — 1 `UPDATE` setting `deleted_at` (`:219`); the row stays in the table, excluded everywhere by `deleted_at is null`.
 
-Owner-check constraint `clause_library_owner_ck` (`db/schema.sql:237-240`) guarantees `(source = 'curated') = (user_id is null)` — a `source='user'` insert with a real `user_id` always satisfies it. See [H6](h6-database-schema.md#tables).
+Owner-check constraint `clause_library_owner_ck` (`db/schema.sql:237-239`) guarantees `(source = 'curated') = (user_id is null)` — a `source='user'` insert with a real `user_id` always satisfies it. See [H6](h6-database-schema.md#tables).
 
 **7 · Failure modes**
 
@@ -436,8 +438,8 @@ _Operator workflow — the compressed five-section form. No user entry point, no
 
 **3 · Trace**
 1. `scripts/seed-library.mjs:20` — `parseCuratedLibrary()` (`src/lib/library/parse-corpus.ts:162`) builds the row set from the RAG corpus (`src/lib/rag/corpus/*.md`), purely, with no network:
-   - `parseModelClauses()` (`parse-corpus.ts:80`) — walks every corpus doc, takes its `## Musterformulierung` block, and extracts each `„…"` quoted variant (`extractQuotedVariants`). 21 docs carry a model clause (`DOC_TO_TOPIC`, `clause-taxonomy.ts` — docs `00`, `22`, `23` are in `DOCS_WITHOUT_MODEL_CLAUSE` and skipped); doc `18` (`zeitmietvertrag-575`) yields **two** variants, so 22 rows. `doc_ref` is the doc id, or `<id>#v2` for a second variant. `posture` is `"preferred"`, except `FALLBACK_DOCS` (`07-staffelmiete-557a`, `08-indexmiete-557b`) and any non-first variant → `"fallback"` (`parse-corpus.ts:39`, `:99`).
-   - `parseTemplateClauses()` (`parse-corpus.ts:123`) — doc `22`'s `## § N …` sections → exactly **11** rows (`doc_ref = "22-vorlage#p1".."#p11"`, `posture = "preferred"`); the function hard-errors if it doesn't get 11.
+   - `parseModelClauses()` (`parse-corpus.ts:74`) — walks every corpus doc, takes its `## Musterformulierung` block, and extracts each `„…"` quoted variant (`extractQuotedVariants`). 21 docs carry a model clause (`DOC_TO_TOPIC`, `clause-taxonomy.ts` — docs `00`, `22`, `23` are in `DOCS_WITHOUT_MODEL_CLAUSE` and skipped); doc `18` (`zeitmietvertrag-575`) yields **two** variants, so 22 rows. `doc_ref` is the doc id, or `<id>#v2` for a second variant. `posture` is `"preferred"`, except `FALLBACK_DOCS` (`07-staffelmiete-557a`, `08-indexmiete-557b`) and any non-first variant → `"fallback"` (`parse-corpus.ts:35`, `:103`).
+   - `parseTemplateClauses()` (`parse-corpus.ts:121`) — doc `22`'s `## § N …` sections → exactly **11** rows (`doc_ref = "22-vorlage#p1".."#p11"`, `posture = "preferred"`); the function hard-errors if it doesn't get 11.
    - `parseCuratedLibrary` concatenates the two (**33 rows**) and hard-errors on a duplicate `doc_ref`.
 2. `seed-library.mjs:24-45` — per row: `insert into clause_library (user_id, title, content, summary, clause_type, reference, jurisdiction, tags, source, posture, doc_ref) values (null, …, 'DE', …, 'curated', …, …) on conflict (doc_ref) where source = 'curated' do update set title, content, summary, clause_type, reference, tags, posture, updated_at = now()` — `returning (xmax = 0) as was_insert` to count inserts vs updates. **No `embedding` / `is_approved` / `approved_*` in the upsert** — curated rows ship unreviewed with a null vector.
 3. `:50-55` — orphan sweep: `delete from clause_library where source = 'curated' and not (doc_ref = any($keep)) returning doc_ref`. FKs that point here (`playbook_rules.preferred_clause_id`) are `on delete set null`, so a delete never blocks.

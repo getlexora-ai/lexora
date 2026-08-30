@@ -1168,8 +1168,21 @@ function ReviewContent() {
             </Button>
           </div>
         </main>
-      ) : (
-        <div className="grid min-h-0 grid-cols-1 min-[720px]:grid-cols-[52px_1fr] min-[1060px]:grid-cols-[52px_1fr_384px]">
+      ) : null}
+
+      {/* The Review editor stays mounted for the whole session and is only
+          hidden behind the Playbook / Compare / History / Approval tabs.
+          Unmounting it on a tab switch tore down the Quill instance — and the
+          one-shot `[]` init effect never re-ran — so Review came back blank,
+          losing any unsaved edits with it (issue #9). `hidden` keeps the DOM,
+          the Quill instance, and the live delta intact across the round trip. */}
+      {!noData && (
+        <div
+          className={cn(
+            "grid min-h-0 grid-cols-1 min-[720px]:grid-cols-[52px_1fr] min-[1060px]:grid-cols-[52px_1fr_384px]",
+            activeTab !== "Review" && "hidden",
+          )}
+        >
           {/* ══════════ left rail ══════════ */}
           <nav className="hidden flex-col items-center gap-1 border-r border-border bg-surface-2 py-2.5 min-[720px]:flex">
             <BrandMark size={26} className="mb-1.5" />

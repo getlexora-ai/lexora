@@ -290,7 +290,7 @@ sequenceDiagram
 > | C6-O1 | Library-insert usage + search-mode split unknown | NO-METRIC | `console.info("[library-insert]", { clauseId, pickedId, semantic })` in `insertFromLibrary` — tier 0 |
 > | C6-O2 | No `clause_refinements` row → the insert leaves no audit trail at all | NO-LOG | write a `clause_refinements` row with a `user_note` of `"library: <title>"` — tier 1 |
 
-**10 · See also** — [E7](e-clause-library.md) (the clause library + its search), [C7](#c7) (the reverse direction), [C15](c3-review-ai-and-output.md#c15) (`insertPreferredClause` — a *different* library-to-document path that appends and applies immediately), [H4](h4-rag-pipeline.md).
+**10 · See also** — [D3](d-clause-library.md#d3) (the clause library + its search), [C7](#c7) (the reverse direction), [C15](c3-review-ai-and-output.md#c15) (`insertPreferredClause` — a *different* library-to-document path that appends and applies immediately), [H4](h4-rag-pipeline.md).
 
 ---
 
@@ -361,7 +361,7 @@ sequenceDiagram
 > | C7-O3 | Duplicate rows from re-saving after reload | NO-METRIC | dedupe on `(user_id, title, content)` or persist `savedClauseIds` — tier 1 |
 > | C7-O4 | Raw DB error leaked, unlogged | LEAK + NO-LOG | `errorResponse(err, "clause-library.from-suggestion")` — tier 0 |
 
-**10 · See also** — [C6](#c6) (the reverse), [E7](e-clause-library.md) (the library + why `is_approved` matters for RDG), [H6](h6-database-schema.md#tables).
+**10 · See also** — [C6](#c6) (the reverse), [D5](d-clause-library.md#d5) (the library + why `is_approved` matters for RDG), [H6](h6-database-schema.md#tables).
 
 ---
 

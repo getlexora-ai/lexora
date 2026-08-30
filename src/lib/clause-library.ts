@@ -223,3 +223,99 @@ export async function softDeleteClause(id: string, userId: string): Promise<bool
   );
   return row !== null;
 }
+
+// ── semantic search (Wave 2) ────────────────────────────────────────────────
+
+export type SemanticHit = LibraryClause & { score: number; rankScore: number };
+
+/**
+ * Embed `queryText` with Gemini, cosine-rank visible clauses that have an
+ * embedding, then re-rank in JS (topic match / posture / approval). Falls back
+ * to lexical `listClauses` when embedding fails or nothing is indexed — the
+ * library must stay usable without an API key.
+ */
+export async function searchClauses(
+  userId: string,
+  queryText: string,
+  opts: { type?: string; topK?: number } = {},
+): Promise<{ hits: SemanticHit[]; mode: "semantic" | "lexical" }> {
+  const topK = Math.min(Math.max(opts.topK ?? 20, 1), 50);
+  const trimmed = queryText.trim();
+  if (!trimmed) return { hits: [], mode: "lexical" };
+
+  const lexicalFallback = async (): Promise<{ hits: SemanticHit[]; mode: "lexical" }> => {
+    const { clauses } = await listClauses({ userId, q: trimmed, type: opts.type, limit: topK });
+    return {
+      mode: "lexical",
+      hits: clauses.map((c) => ({ ...c, score: 0, rankScore: 0 })),
+    };
+  };
+
+  let queryVec: number[];
+  try {
+    const { embedOne } = await import("@/lib/rag/gemini");
+    queryVec = await embedOne(trimmed, "RETRIEVAL_QUERY");
+  } catch {
+    return lexicalFallback();
+  }
+
+  const literal = `[${queryVec.join(",")}]`;
+  const params: unknown[] = [userId, literal];
+  let typeFilter = "";
+  if (opts.type && isKnownTopic(opts.type)) {
+    params.push(opts.type);
+    typeFilter = `and cl.clause_type = $3`;
+  }
+  params.push(topK);
+
+  const rows = await query<LibraryClause & { score: string }>(
+    `select ${COLUMNS}, 1 - (cl.embedding <=> $2::vector) as score
+       from clause_library cl
+      where cl.deleted_at is null
+        and cl.embedding is not null
+        and (cl.user_id = $1 or cl.user_id is null)
+        ${typeFilter}
+      order by cl.embedding <=> $2::vector
+      limit $${params.length}`,
+    params,
+  );
+
+  if (rows.length === 0) return lexicalFallback();
+
+  const { rankClauses } = await import("@/lib/library/rank");
+  const ranked = rankClauses(
+    rows.map((r) => ({
+      id: r.id,
+      score: Number(r.score),
+      clause_type: r.clause_type,
+      posture: r.posture,
+      is_approved: r.is_approved,
+    })),
+    opts.type && isKnownTopic(opts.type) ? opts.type : null,
+  );
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  return {
+    mode: "semantic",
+    hits: ranked.map((rk) => {
+      const row = byId.get(rk.id)!;
+      const { score: _s, ...rest } = row;
+      return { ...(rest as LibraryClause), score: Number(row.score), rankScore: rk.rankScore };
+    }),
+  };
+}
+
+/** "Save to library" from the review screen — an imported clause. */
+export async function saveFromSuggestion(
+  userId: string,
+  input: { title: string; content: string; clause_type: string; reference?: string | null; summary?: string | null; tags?: string[] },
+): Promise<LibraryClause> {
+  return createClause(userId, {
+    title: input.title,
+    content: input.content,
+    clause_type: isKnownTopic(input.clause_type) ? input.clause_type : "sonstiges",
+    reference: input.reference ?? null,
+    summary: input.summary ?? null,
+    tags: input.tags ?? [],
+    source: "imported",
+  });
+}

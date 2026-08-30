@@ -53,7 +53,7 @@ flowchart TD
 
 Two rules explain most of the topology:
 
-- **`proxy.ts` gates only the paths in `GATED_COMPUTE_PATHS`** (`/api/extract`, `/api/analyse`, `/api/generate`, `/api/refine`, `/api/chat`, `/api/contract-edit`, `/api/contracts/*/reanalyse`, `/api/clause-library/search`, `/api/templates/suggest-variables`). A guest hitting one gets a 401 at the middleware. Everything else — all the CRUD — is guarded inside the handler by `currentUserId()` + an `owns*` check ([H1](h1-auth-and-ownership.md)).
+- **`proxy.ts` gates a POST to one of nine compute paths** — the eight in `GATED_COMPUTE_PATHS` (`/api/extract`, `/api/analyse`, `/api/generate`, `/api/refine`, `/api/chat`, `/api/contract-edit`, `/api/clause-library/search`, `/api/templates/suggest-variables`) plus `/api/contracts/*/reanalyse` via `GATED_COMPUTE_PATTERN`. The gate only fires on `POST`; a guest hitting one gets a 401 at the middleware. Everything else — all the CRUD — is guarded inside the handler by `currentUserId()` + an `owns*` check ([H1](h1-auth-and-ownership.md)).
 - **Compute routes call `enforceRateLimit` first**, per-tier hour/day buckets plus a global `compute` tier ([H2](h2-rate-limiting.md)). A 429 writes the one durable runtime row the system produces.
 
 ---
@@ -105,11 +105,11 @@ Two rules explain most of the topology:
 | C8 | Dismiss ("not an issue") + restore | finding card **Dismiss** / **Restore** | owns\* | N | `risk_clauses`, `contracts` |
 | C9 | Add a clause the AI missed | **Add clause** form | owns\* | N | `risk_clauses`, `contracts` |
 | C10 | Contract chat (Q&A) + history | chat panel send | proxy-gated + owns\* | **Y** | `chat_messages` |
-| C11 | Create-mode AI edit (whole-document rewrite) | `mode=create` editor **Ask AI to edit** | proxy-gated | **Y** | `contracts`, `contract_versions`, `chat_messages` |
+| C11 | Create-mode AI edit (whole-document rewrite) | `mode=create` editor **Ask AI to edit** | proxy-gated + owns\* | **Y** | `contracts`, `contract_versions`, `chat_messages` |
 | C12 | Selection toolbar → refine selected text | text selection → **Refine** | proxy-gated | **Y** | `contracts.quill_delta` |
 | C13 | Version snapshot, history list, restore | **Save version** / History / **Restore** | client (+ owns\* on `/versions`) | N | `contract_versions` (+ `contracts` on restore) |
 | C14 | Re-analyse (± playbook) | **Re-analyse** button | proxy-gated + owns\* | **Y** | `risk_clauses`, `contracts` |
-| C15 | Playbook tab: coverage, verdicts, insert preferred clause | **Playbook** tab | owns\* (reads) | N | `contracts`, `contract_versions` (on insert) |
+| C15 | Playbook tab: coverage, verdicts, insert preferred clause | **Playbook** tab | currentUserId (+ owns\* on `/versions`) | N | `contracts`, `contract_versions` (on insert) |
 | C16 | Export DOCX / PDF (client-side, lazy) | **Export** menu | none (client) | N | — |
 | C17 | Clause highlight + centre-scroll (`findPassage`) | click a finding card | none | N | — |
 
@@ -132,7 +132,7 @@ Two rules explain most of the topology:
 | E2 | Preview | template card **Preview** | none (in-memory) | N | — |
 | E3 | Use a template — render-vs-generate decision | create modal, "From template" | none (client decision) | N | — (→ B8 / B9) |
 | E4 | Create / edit / delete a template | `TemplateEditor` | currentUserId / ownsTemplate | N | `contract_templates` |
-| E5 | ⚠ Save-as-template + AI suggest-variables (routes live, dialog unmounted) | none (direct HTTP only) | proxy-gated (suggest) / ownsContract (from-contract) | **Y** (suggest-variables) | `contract_templates` (from-contract) |
+| E5 | ⚠ Save-as-template + AI suggest-variables (routes live, dialog unmounted) | none (direct HTTP only) | proxy-gated + ownsContract (suggest) / ownsContract (from-contract) | **Y** (suggest-variables) | `contract_templates` (from-contract) |
 | E6 | Curated seeding (operator) | `npm run seed:templates` | operator (DB creds) | N | `contract_templates` (curated) |
 
 ### F — Playbooks ([f-playbooks.md](f-playbooks.md))
@@ -165,14 +165,14 @@ Two rules explain most of the topology:
 |---|---------|-----------|
 | [H1](h1-auth-and-ownership.md) | Auth & ownership | The compute gate (`GATED_COMPUTE_PATHS` in `proxy.ts`), `currentUserId()` from Clerk, the `ownsContract` / `ownsClause` / `ownsLibraryClause` / `ownsTemplate` / `ownsPlaybook` helpers — and the handful of routes guarded only by a SQL `WHERE user_id = $n` with no pre-check. |
 | [H2](h2-rate-limiting.md) | Rate limiting | `enforceRateLimit(req, tier)` — per-tier hour/day buckets **and** a global `compute` tier; fail-open if the backend is unreachable; every 429 inserts a `rate_limit_blocks` row (the only durable runtime signal in the system). |
-| [H3](h3-error-taxonomy.md) | Error taxonomy | `AppError` (HTTP status + machine `code` + user-safe `message`) vs `errorResponse(err, context)` — used by 8 compute routes; ~20 CRUD routes instead return the raw Postgres message and log nothing. |
+| [H3](h3-error-taxonomy.md) | Error taxonomy | `AppError` (HTTP status + machine `code` + user-safe `message`) vs `errorResponse(err, context)` — used by 8 compute routes; the other 23 route files instead return the raw Postgres message and log nothing. |
 | [H4](h4-rag-pipeline.md) | RAG pipeline | 24-doc German tenancy-law corpus → `buildIndex()` → `rag_chunks` (pgvector, 768-dim, L2-normalised, cosine `<=>`); retrieval + round-robin merge; grounded lease drafting ([B7](b-getting-a-contract-in.md#b7)) and the semantic clause-search reuse ([D3](d-clause-library.md#d3)). |
 | [H5](h5-llm-layer.md) | LLM layer | `askLLM({ prompt, maxTokens, responseSchema? })` — Gemini `gemini-3.6-flash`, input `slice` caps, 3 transport retries, `AppError` on config/busy/blocked/no-output, JSON coercion that silently drops malformed entries. |
 | [H6](h6-database-schema.md) | Database schema | Every table, column, index, trigger and FK in `db/schema.sql`; every workflow's **§4 Database effects** links here. |
 | [H7](h7-storage.md) | Storage | `putOriginal` / `getOriginal` behind a driver (`none` by default → a no-op that returns `null`); only `/api/extract` ever writes, and it swallows failures to `console.error`. |
 | [H8](h8-observability.md) | Observability | The register of all 178 **§9** gaps by tier and class; what the running system emits today (26 `console.*`, zero `console.info`, no timing, no analytics); the tier-0 "first hour" of ~12 `console.info` lines. |
 
-Also: **[z-dead-and-unwired.md](z-dead-and-unwired.md)** — code that ships but no live path reaches (`SaveAsTemplateDialog`, the guest `pendingSave` flow, `was_applied`, dead dashboard affordances), and bugs that are shipped and known.
+Also: **[z-dead-and-unwired.md](z-dead-and-unwired.md)** — code that ships but no live path reaches (the whole `/onboarding` wizard, `SaveAsTemplateDialog`, the guest `pendingSave` flow, `was_applied`, dead dashboard affordances), and bugs that are shipped and known.
 
 ---
 

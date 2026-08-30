@@ -45,9 +45,9 @@ Almost all thrown from [`askLLM`](h5-llm-layer.md) or `analyseContract`:
 
 ## Which routes use it
 
-Only **7 of ~26 route files** call `errorResponse`: `analyse`, `generate`, `extract`, `refine`, `chat`, `contract-edit`, `clause-library/search`. These are the compute routes — the ones that call `askLLM`, where a structured `code` matters.
+Only **8 of 31 route files** call `errorResponse`: `analyse`, `generate`, `extract`, `refine`, `chat`, `contract-edit`, `clause-library/search`, `templates/suggest-variables`. These are the compute routes — the ones that call `askLLM`, where a structured `code` matters.
 
-⚠ **Everything else returns raw DB error text.** The pattern `catch (err) { return NextResponse.json({ error: (err as Error).message }, { status: 500 }) }` appears in ~20 handlers — e.g. `src/app/api/contracts/route.ts:20, 107`, every `/api/contracts/[id]/*` route, the clause-library and templates CRUD routes. A constraint violation or a malformed query sends its Postgres message string to the browser. This is a **LEAK** ([H8](h8-observability.md) rubric) and the exact thing `errorResponse` exists to prevent.
+⚠ **Everything else returns raw DB error text.** The pattern `catch (err) { return NextResponse.json({ error: (err as Error).message }, { status: 500 }) }` appears in the other **23** route files — e.g. `src/app/api/contracts/route.ts:20, 107`, every `/api/contracts/[id]/*` route, the clause-library and templates CRUD routes. A constraint violation or a malformed query sends its Postgres message string to the browser. This is a **LEAK** ([H8](h8-observability.md) rubric) and the exact thing `errorResponse` exists to prevent.
 
 ---
 
@@ -68,7 +68,7 @@ Callers read `res.ok`, then `data.message` (fallback to a hard-coded string), an
 | # | Blind spot | Class | Cheapest fix |
 |---|-----------|-------|--------------|
 | H3-O1 | `errorResponse` logs without route / user / op id | THIN-LOG | pass `req` in and log `{ event:"error", route, userId, opId, code, status }` — tier 1 |
-| H3-O2 | ~20 routes leak raw DB messages + don't log | LEAK + NO-LOG | replace the ad-hoc `catch` with `errorResponse(err, "<route>")` everywhere — tier 0/1 |
+| H3-O2 | 23 routes leak raw DB messages + don't log | LEAK + NO-LOG | replace the ad-hoc `catch` with `errorResponse(err, "<route>")` everywhere — tier 0/1 |
 | H3-O3 | No error-rate metric | NO-METRIC | count non-2xx by route in `src/lib/log.ts` — tier 1 |
 
 ---

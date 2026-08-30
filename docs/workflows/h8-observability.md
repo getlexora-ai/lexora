@@ -11,11 +11,15 @@ Verified against `main` @ `bf4d660`.
 The honest summary: **almost nothing.** A production incident today is reconstructed from the user's screenshot and a re-read of the code.
 
 - **26 `console.*` calls in all of `src/`** — **24 `console.error`**, **2 `console.warn`**, and **zero** `console.info` / `console.log` / `console.debug`. The 2 warns are both boot-time storage-config checks (`src/lib/storage.ts:84`, `:176`). Every other emission is an error path. A clean run — an upload analysed, a fix applied, a contract exported — writes **not one log line**.
-- **No timing, anywhere.** There is no `Date.now()` / `performance.now()` bracketing a DB query, an LLM call, OCR, or a route handler. Every "latency unknown" / "how slow is X" gap in the register traces back to this single absence.
+- **No timing on any request path.** No `Date.now()` / `performance.now()` brackets a DB query, an LLM call, OCR, or a route handler. Every "latency unknown" / "how slow is X" gap in the register traces back to this. (The one exception is the operator ingest CLI — `buildIndex` measures `elapsedMs` at `src/lib/rag/ingest.ts:30,59` — which never runs in a request.)
 - **No analytics.** No pageview beacon, no event pipeline, no funnel instrumentation, no client-side product metrics at all (`A1-O1`). The landing demo, the sign-up funnel, and every in-app action are uncounted.
 - **One almost-structured logger:** `errorResponse(err, context)` (`src/lib/errors.ts:25-34`) emits a single `console.error("[<context>]", err)` on the non-`AppError` branch, then flattens to a generic 500. It carries a hand-passed `context` tag and nothing else — no route, no `userId`, no request id, no duration.
 - **`errorResponse` is used by 8 of 31 route files** — `analyse`, `chat`, `clause-library/search`, `contract-edit`, `extract`, `generate`, `refine`, `templates/suggest-variables` (the compute routes). The **other 23** route files use the ad-hoc pattern `catch (err) { return NextResponse.json({ error: (err as Error).message }, { status: 500 }) }` — they leak the raw Postgres message to the browser **and** log nothing (`H3-O2`).
-- **The only durable runtime signal is the `rate_limit_blocks` table.** One row is inserted per 429 (`src/lib/rate-limit.ts:108`, fire-and-forget with an empty `.catch` — `H2-O3`). It is the sole persisted evidence that anything happened in prod. There is **no** `compute_calls` table, no request log, no error table, no `seed_runs` table, no token/cost ledger.
+- **Three durable runtime tables exist; none is read for operations.**
+  - `rate_limits` (`db/schema.sql:371`) — per-key/per-window allowed-request counters, upsert-incremented on **every** compute request (`src/lib/rate-limit.ts:44-55`), pruned at 2 days (`:124`). The compute-call denominator (`H2-O1`) is physically here — nothing ever `SELECT`s it outside `enforceRateLimit`.
+  - `rate_limit_blocks` (`db/schema.sql:379`) — one row per 429 (`src/lib/rate-limit.ts:108`, fire-and-forget with an empty `.catch` — `H2-O3`). The only signal anyone actually looks at.
+  - `rag_index_meta` (`db/005_rag_corpus.sql:31`) — a single upserted row (`id = 1`) carrying `corpus_hash`, `doc_count`, `chunk_count`, `built_at` after each `rag:ingest` (`src/lib/rag/store.ts:87`). A seed-run record with **no history** — every build overwrites it.
+  There is still **no** `compute_calls` ledger, no request log, no error table, no `seed_runs` history table, no token/cost accounting.
 
 ### The 26 emissions, by file
 
@@ -204,7 +208,7 @@ Every §9 gap, across all workflow files, sorted by tier then id. **178 gaps: 12
 | H2-O1 | No count of allowed compute calls → KPI has no denominator | NO-METRIC |
 | H2-O2 | Fail-open events not counted | THIN-LOG |
 | H2-O3 | Block-log insert failures swallowed | SILENT-CATCH |
-| H3-O2 | ~20 routes leak raw DB messages + don't log | LEAK + NO-LOG |
+| H3-O2 | 23 routes leak raw DB messages + don't log | LEAK + NO-LOG |
 | H4-O1 | Grounding-score fallback firing is invisible | NO-LOG |
 | H4-O4 | `assertIndexFresh` throw not distinguished from other 500s | THIN-LOG |
 | H5-O2 | No latency per LLM call | NO-METRIC |
@@ -272,9 +276,9 @@ Every §9 gap, across all workflow files, sorted by tier then id. **178 gaps: 12
 
 | id | Blind spot | Note |
 |----|-----------|------|
-| A5-O1 | `/welcome` is a self-described "smoke test" on the critical post-auth path | replace with a real first-run screen, or redirect straight to `/dashboard` — product call |
+| A5-O1 | `/welcome` is a self-described "smoke test" on the critical post-auth path | wire up the already-built (but dead) `/onboarding` wizard as the first-run screen, or redirect straight to `/dashboard` — product call; see [Z4](z-dead-and-unwired.md) |
 | A7-O2 | Dead guest-save code (`pendingSave` + banner) still shipped | delete it, or re-open the flow — product call |
-| A9-O1 | Theme preference unknown | not worth instrumenting server-side; skip |
+| A9-O1 | Theme preference unknown | source doc classes it `NO-METRIC`, but filed here — not worth instrumenting server-side; skip |
 | D5-O4 | `approved_by` is an unverified self-attestation | a credentials model is the real fix; out of scope for observability |
 | E6-O3 | Curated template ships `is_approved = false` with no review gate | matches [D5](d-clause-library.md#d5) — a review/credentials model |
 
@@ -282,19 +286,19 @@ Every §9 gap, across all workflow files, sorted by tier then id. **178 gaps: 12
 
 ## 5 · The first hour
 
-Twelve lines. Each is a single `console.info` (one a `console.warn`) with a bracketed event name, no new file, no schema, no dependency. Together they instrument the **critical spine** — upload → analyse → save → review → apply-fix → refine → chat → export — plus the compute gate and every LLM call. After this, a `grep '\[analyse\] ok'` on the platform logs answers "how many analyses today, how slow, how big" that nothing answers now.
+Twelve `console.info` lines with a bracketed event name — no new file, no schema. Eleven drop in as-is; #9 reads cleanest once `C4-O1`'s `Promise.allSettled` lands, and #1 adds a `performance.now()` bracket. Together they instrument the **critical spine** — upload → analyse → save → review → apply-fix → refine → chat → export — plus the compute gate and every LLM call. After this, `grep '\[analyse\] ok'` on the platform logs answers "how many analyses today, how slow, how big" — which nothing answers now.
 
 | # | Event line | Where | Closes |
 |---|-----------|-------|--------|
 | 1 | `console.info("[llm] call", { route, ms, ok, retries })` | `src/lib/llm.ts` — around the `fetch` in `askLLM` | `H5-O2`, `H5-O3` — **do this first**; it instruments every Gemini call from one place |
 | 2 | `console.info("[gate] reject", { path })` | `src/proxy.ts` — the compute-gate 401 branch | `H1-O1`, `A7-O1` |
-| 3 | `console.info("[extract] done", { ms, polls, chars })` | `src/app/api/extract/route.ts` — before the success `return` | `B2-O1`, `B2-O2` |
+| 3 | `console.info("[extract] done", { mode, ms, chars })` | `src/app/api/extract/route.ts` — before **both** success returns (`:96` sync, `:109` async) | `B2-O1`, `B2-O2` (a poll count needs `pollUntilProcessed` to return one — one extra line) |
 | 4 | `console.info("[analyse] ok", { chars, truncated, issues, ms, playbook })` | `src/app/api/analyse/route.ts` — before `NextResponse.json` | `B3-O1`, `B3-O3`, `B4-O1` |
 | 5 | `console.info("[generate] ok", { type, grounded, topScore, ms })` | `src/app/api/generate/route.ts` — before the `return` | `B6-O1`, `B7-O1`, `B8-O2` |
 | 6 | `console.info("[contracts] create", { id, clauses, ms })` | `src/app/api/contracts/route.ts` — after the clause insert | `B5` funnel; pairs with the `errorResponse` swap for `B5-O2` |
 | 7 | `console.info("[review] loaded", { clauses, dismissed, chat, usedDelta, ms })` | `src/app/review/page.tsx` — before `setDbLoading(false)` | `C1-O2`, `C2-O2` |
 | 8 | `console.info("[autosave] ok", { bytes, ms })` | `src/app/review/page.tsx` — the autosave `.then` | `C3-O2` |
-| 9 | `console.info("[apply-fix] ok", { contractId, clauseId })` | `src/app/review/page.tsx` — after the three writes resolve | `C4-O3`, `C4-O2` (log the no-match too) |
+| 9 | `console.info("[apply-fix] dispatch", { contractId, clauseId })` | `src/app/review/page.tsx` — in `handleReplace`, where it fires the fetches (they are fire-and-forget, so there is no "after they resolve" point until `C4-O1`'s `Promise.allSettled` lands) | `C4-O3`, `C4-O2` (log the no-match too) |
 | 10 | `console.info("[refine] ok", { chars, truncated, ms })` | `src/app/api/refine/route.ts` — before the `return` | `C5-O1`, `C5-O4` |
 | 11 | `console.info("[chat] ok", { turns, ms, truncated })` | `src/app/api/chat/route.ts` — before the `return` | `C10-O1` |
 | 12 | `console.info("[export]", { fmt, lines })` | `src/app/review/page.tsx` — after `exportContract` resolves | `C16-O1` |
@@ -310,11 +314,11 @@ The natural tier-1 follow-on is `src/lib/log.ts` (single-line JSON, an `x-lexora
 
 ## 6 · Cross-cutting themes
 
-- **`NO-METRIC` is just under half the register (83 of 178).** The system has no counters. Almost all of these are "nobody counts X" where X is a funnel step or a rate; the tier-0 answer is always the same shape — a `console.info` with the count in the payload.
+- **`NO-METRIC` is just under half the register** — 82 rows by primary class (83 if `A9-O1`, filed as unclassed, is counted). The system has no counters that anyone reads. Almost all of these are "nobody counts X" where X is a funnel step or a rate; the tier-0 answer is always the same shape — a `console.info` with the count in the payload.
 - **`LEAK + NO-LOG` is a single fix repeated 12 times.** Every one is the raw-message `catch`. `errorResponse` already exists; it just isn't wired into the CRUD routes.
-- **Every "latency unknown" gap is downstream of "no timing primitive".** Add `performance.now()` bracketing in `askLLM` (line 1) and the route handlers and roughly 15 `NO-METRIC` gaps get their number for free.
-- **`SILENT-CATCH` (11) clusters on optimistic-UI paths** — `C11-O3` (`.catch(() => {})`), `D3-O1` (empty `catch` → lexical fallback), `H2-O3` (block-log insert), `G4-O1` / `G5-O2` (rowCount ignored). These are the ones that make a failure look like a success; each is one line in an existing `catch`.
-- **`rate_limit_blocks` is the template.** It proves the pattern works: a fire-and-forget insert into a narrow table, queried later. `compute_calls`, `seed_runs`, `clause_approval_events`, `playbook_approvals`, and `contract_playbook_coverage` are all the same move — and five separate tier-2 gaps collapse into "adopt the `rate_limit_blocks` pattern four more times".
+- **Every "latency unknown" gap is downstream of "no timing on a request path".** Add `performance.now()` bracketing in `askLLM` (line 1) and the route handlers and roughly 15 `NO-METRIC` gaps get their number for free.
+- **`SILENT-CATCH` (11 by primary class) clusters on optimistic-UI paths** — `C11-O3` (`.catch(() => {})`), `D3-O1` (empty `catch` → lexical fallback), `H2-O3` (block-log insert), `G4-O1` / `G5-O2` (rowCount ignored). These are the ones that make a failure look like a success; each is one line in an existing `catch`.
+- **`rate_limit_blocks` is the tier-2 template.** It proves the pattern works: a fire-and-forget insert into a narrow table, queried later. `compute_calls`, `seed_runs`, `clause_approval_events`, `playbook_approvals`, and `contract_playbook_coverage` are all the same move — and five separate tier-2 gaps collapse into "adopt the `rate_limit_blocks` pattern a few more times". (`rate_limits` shows the other half of the lesson: a durable counter that nobody queries is not observability.)
 
 ---
 

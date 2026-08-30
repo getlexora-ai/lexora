@@ -67,6 +67,7 @@ sequenceDiagram
 - **`sequenceDiagram`** for anything crossing a process boundary (all of B, C, D3, E5, F5, G).
 - **`flowchart TD`** only for pure client-side decision logic with no network — A2 (the landing demo's two analysers), E3 (render-vs-generate), C17 (`findPassage`'s exact→normalised fallback).
 - Never both for one workflow.
+- The one exception to the `flowchart` rule is the **README "system at a glance"** diagram — it is a topology map of the whole app, not a per-workflow trace, so a `flowchart TD` is the right form there.
 
 ---
 

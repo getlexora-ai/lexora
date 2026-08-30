@@ -298,8 +298,8 @@ export async function searchClauses(
     mode: "semantic",
     hits: ranked.map((rk) => {
       const row = byId.get(rk.id)!;
-      const { score: _s, ...rest } = row;
-      return { ...(rest as LibraryClause), score: Number(row.score), rankScore: rk.rankScore };
+      const score = Number(row.score);
+      return { ...(row as LibraryClause), score, rankScore: rk.rankScore };
     }),
   };
 }

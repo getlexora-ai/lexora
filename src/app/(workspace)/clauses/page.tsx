@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, Search, Loader2, BookOpen } from "lucide-react";
+import { Plus, Search, Loader2, BookOpen, Sparkles } from "lucide-react";
 import { SignInButton, useUser } from "@clerk/nextjs";
 import { RdgNoticeBar } from "@/components/rdg-notice";
 import { Button } from "@/components/ui/button";
@@ -41,18 +41,35 @@ export default function ClausesPage() {
   const [scope, setScope] = useState<Scope>("all");
   const [q, setQ] = useState("");
   const [queryTerm, setQueryTerm] = useState("");
+  const [semantic, setSemantic] = useState(false);
+  const [searchMode, setSearchMode] = useState<"semantic" | "lexical" | null>(null);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [active, setActive] = useState<ClauseRow | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const sp = new URLSearchParams();
-    if (type) sp.set("type", type);
-    if (posture) sp.set("posture", posture);
-    if (scope !== "all") sp.set("scope", scope);
-    if (queryTerm.trim()) sp.set("q", queryTerm.trim());
     try {
+      // Semantic search: POST the query, meaning-rank against pgvector.
+      if (semantic && queryTerm.trim()) {
+        const res = await fetch("/api/clause-library/search", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ query: queryTerm.trim(), type: type || undefined }),
+        });
+        const data = await res.json();
+        const hits: ClauseRow[] = data.hits ?? [];
+        setRows(hits);
+        setTotal(hits.length);
+        setSearchMode(data.mode ?? null);
+        return;
+      }
+      setSearchMode(null);
+      const sp = new URLSearchParams();
+      if (type) sp.set("type", type);
+      if (posture) sp.set("posture", posture);
+      if (scope !== "all") sp.set("scope", scope);
+      if (queryTerm.trim()) sp.set("q", queryTerm.trim());
       const res = await fetch(`/api/clause-library?${sp.toString()}`);
       const data = await res.json();
       setRows(data.clauses ?? []);
@@ -60,7 +77,7 @@ export default function ClausesPage() {
     } finally {
       setLoading(false);
     }
-  }, [type, posture, scope, queryTerm]);
+  }, [type, posture, scope, queryTerm, semantic]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -146,23 +163,42 @@ export default function ClausesPage() {
           ))}
         </div>
 
-        <form
-          className="ml-auto flex items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1.5"
-          onSubmit={(e) => { e.preventDefault(); setQueryTerm(q); }}
-        >
-          <Search className="size-3.5 text-text-3" />
-          <input
-            className="w-[200px] bg-transparent text-sm focus:outline-none"
-            placeholder="Search wording…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
-          {queryTerm && (
-            <button type="button" className="text-[11px] text-text-3 hover:text-foreground"
-              onClick={() => { setQ(""); setQueryTerm(""); }}>clear</button>
-          )}
-        </form>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            className="seg-btn"
+            data-on={semantic}
+            aria-pressed={semantic}
+            title="Meaning-based search (uses the AI embedding index)"
+            onClick={() => setSemantic((v) => !v)}
+          >
+            <Sparkles className="mr-1 inline size-3.5" /> Semantic
+          </button>
+          <form
+            className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1.5"
+            onSubmit={(e) => { e.preventDefault(); setQueryTerm(q); }}
+          >
+            <Search className="size-3.5 text-text-3" />
+            <input
+              className="w-[200px] bg-transparent text-sm focus:outline-none"
+              placeholder={semantic ? "Describe the clause…" : "Search wording…"}
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+            {queryTerm && (
+              <button type="button" className="text-[11px] text-text-3 hover:text-foreground"
+                onClick={() => { setQ(""); setQueryTerm(""); }}>clear</button>
+            )}
+          </form>
+        </div>
       </div>
+
+      {semantic && searchMode === "lexical" && queryTerm && (
+        <p className="-mt-1 text-[12px] text-text-3">
+          Semantic index unavailable — showing a keyword match instead. Run{" "}
+          <code className="font-mono text-[11px]">npm run seed:library -- --embed</code> to enable it.
+        </p>
+      )}
 
       {/* Table */}
       <div className="overflow-x-auto rounded-lg border border-border">

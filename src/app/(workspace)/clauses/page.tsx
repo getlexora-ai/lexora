@@ -104,7 +104,7 @@ export default function ClausesPage() {
 
   if (isLoaded && !isSignedIn) {
     return (
-      <div className="flex w-full max-w-[1120px] flex-col gap-4.5 p-[clamp(16px,3vw,28px)]">
+      <div className="flex w-full flex-col gap-4.5 px-[clamp(16px,4vw,64px)] py-[clamp(16px,3vw,28px)]">
         <RdgNoticeBar />
         <div className="flex flex-col items-center gap-3 rounded-lg border border-border bg-surface-2 px-6 py-16 text-center">
           <BookOpen className="size-6 text-text-3" />
@@ -119,7 +119,7 @@ export default function ClausesPage() {
   }
 
   return (
-    <div className="flex w-full max-w-[1120px] flex-col gap-4.5 p-[clamp(16px,3vw,28px)]">
+    <div className="flex w-full flex-col gap-4.5 px-[clamp(16px,4vw,64px)] py-[clamp(16px,3vw,28px)]">
       <RdgNoticeBar />
 
       <div className="flex flex-wrap items-center justify-between gap-3">

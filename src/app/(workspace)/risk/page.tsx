@@ -23,7 +23,7 @@ export default function RiskDashboardPage() {
   }, []);
 
   return (
-    <div className="flex w-full max-w-[1120px] flex-col gap-4.5 p-[clamp(16px,3vw,28px)]">
+    <div className="flex w-full flex-col gap-4.5 px-[clamp(16px,4vw,64px)] py-[clamp(16px,3vw,28px)]">
       <RdgNoticeBar />
 
       <section>

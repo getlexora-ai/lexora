@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft, ChevronRight, Sparkles, Send, Loader2, MessageSquare,
   Plus, X, Check, FileText, LayoutGrid, BookOpen, BarChart3, Settings,
-  Undo2, Wand2,
+  Undo2, Wand2, Library,
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,9 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { analysisStore, RiskClause } from "@/lib/analysis-store";
 import { CoverageList } from "@/components/playbooks/coverage-list";
 import type { CoverageRow, PlaybookRule } from "@/components/playbooks/types";
+import { ClausePicker } from "@/components/clauses/clause-picker";
+import type { ClauseRow } from "@/components/clauses/clause-dialog";
+import { guessTopic } from "@/lib/clause-taxonomy";
 import { cn } from "@/lib/utils";
 import { looksLikeMarkdown, markdownToHtml, stripPageSeparators } from "@/lib/markdown";
 
@@ -173,6 +176,50 @@ function ReviewContent() {
 
   // Set by any compute route returning 429; shown as a transient toast.
   const [computeError, setComputeError] = useState<string | null>(null);
+
+  // Clause library (Wave 2): the card whose "Insert from library" picker is
+  // open, and the set of cards already banked to the library this session.
+  const [pickerCardId, setPickerCardId] = useState<string | null>(null);
+  const [savedClauseIds, setSavedClauseIds] = useState<Set<string>>(new Set());
+
+  /** Swap a card's suggested wording for a library clause (local + persisted). */
+  function insertFromLibrary(card: RiskClause, picked: ClauseRow) {
+    setClauses(prev => prev.map(c => c.id === card.id ? { ...c, suggestion: picked.content } : c));
+    if (contractId) {
+      fetch(`/api/contracts/${contractId}/clauses/${card.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refined_suggestion: picked.content }),
+      }).catch(err => console.error("[insertFromLibrary] clause patch failed:", err));
+    }
+    setComputeError(`Inserted "${picked.title}" — review it, then Apply fix.`);
+  }
+
+  /** Bank a card's current suggested wording to the personal clause library. */
+  async function saveToLibrary(card: RiskClause) {
+    if (!contractId) {
+      setComputeError("Save the contract first, then you can add its clauses to your library.");
+      return;
+    }
+    try {
+      const res = await fetch("/api/clause-library/from-suggestion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contractId,
+          title: card.clause,
+          content: card.suggestion,
+          clause_type: guessTopic(card.clause),
+          reference: (card as RiskClause & { reference?: string }).reference ?? null,
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error ?? "Save failed");
+      setSavedClauseIds(prev => new Set(prev).add(card.id));
+      setComputeError("Saved to your clause library.");
+    } catch (e) {
+      setComputeError((e as Error).message);
+    }
+  }
   // Returns the message when `res` is a 429 (and shows the toast), else null.
   function rateLimitNote(res: Response, data: { retry_after?: number; scope?: string }): string | null {
     if (res.status !== 429) return null;
@@ -1455,18 +1502,28 @@ function ReviewContent() {
                           <div>
                             <div className="mb-1 flex items-center justify-between">
                               <p className="eyebrow">Suggested wording — for your review</p>
-                              <button
-                                type="button"
-                                className="text-[11px] text-text-3 transition-colors hover:text-foreground"
-                                onClick={() => {
-                                  navigator.clipboard?.writeText(card.suggestion).then(
-                                    () => setComputeError("Suggested wording copied to the clipboard."),
-                                    () => setComputeError("Couldn't copy — select the text manually."),
-                                  );
-                                }}
-                              >
-                                Copy
-                              </button>
+                              <div className="flex items-center gap-2.5">
+                                <button
+                                  type="button"
+                                  className="text-[11px] text-text-3 transition-colors hover:text-foreground disabled:opacity-50"
+                                  disabled={savedClauseIds.has(card.id)}
+                                  onClick={() => saveToLibrary(card)}
+                                >
+                                  {savedClauseIds.has(card.id) ? "Saved ✓" : "Save to library"}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="text-[11px] text-text-3 transition-colors hover:text-foreground"
+                                  onClick={() => {
+                                    navigator.clipboard?.writeText(card.suggestion).then(
+                                      () => setComputeError("Suggested wording copied to the clipboard."),
+                                      () => setComputeError("Couldn't copy — select the text manually."),
+                                    );
+                                  }}
+                                >
+                                  Copy
+                                </button>
+                              </div>
                             </div>
                             <p className="rounded-md border border-border bg-surface-2 p-2.5 text-[12.5px] leading-[1.6] text-foreground">
                               {card.suggestion}
@@ -1559,7 +1616,7 @@ function ReviewContent() {
                       {/* Actions — always visible, so a fix can be applied
                           without expanding the card. */}
                       {dismissingId !== card.id && (
-                        <div className="flex gap-1.5 border-t border-border p-2.5">
+                        <div className="flex flex-wrap gap-1.5 border-t border-border p-2.5">
                           <Button
                             size="sm"
                             className="flex-1"
@@ -1578,6 +1635,14 @@ function ReviewContent() {
                           >
                             <Wand2 className="size-3.5" />
                             {isRefining ? "Cancel" : "Refine"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => { setActiveCardId(card.id); setPickerCardId(card.id); }}
+                          >
+                            <Library className="size-3.5" />
+                            Library
                           </Button>
                           <Button
                             size="sm"
@@ -1717,6 +1782,19 @@ function ReviewContent() {
       )}
 
       <ThemeToggle floating />
+
+      {/* Clause-library picker for "Library" on a risk card (Wave 2). */}
+      {(() => {
+        const card = clauses.find(c => c.id === pickerCardId);
+        return (
+          <ClausePicker
+            open={!!card}
+            onClose={() => setPickerCardId(null)}
+            clauseTypeHint={card ? guessTopic(card.clause) : undefined}
+            onPick={(picked) => { if (card) insertFromLibrary(card, picked); }}
+          />
+        );
+      })()}
     </div>
   );
 }

@@ -32,6 +32,7 @@ export async function POST(req: NextRequest) {
     extracted_text: string;
     file_path?: string | null;
     risk_level: "high" | "medium" | "low";
+    template_id?: string | null;          // db/007 — set when generated from a template
     playbook_id?: string | null;          // db/008 — set when analysed against a playbook
     clauses: Array<{
       type: "high" | "medium" | "low";
@@ -52,8 +53,8 @@ export async function POST(req: NextRequest) {
     // Insert contract row
     const contract = await queryOne<{ id: string }>(
       `insert into contracts
-         (user_id, name, contract_type, extracted_text, file_path, risk_level, total_issues, issues_fixed, playbook_id)
-       values ($1, $2, $3, $4, $5, $6, $7, 0, $8)
+         (user_id, name, contract_type, extracted_text, file_path, risk_level, total_issues, issues_fixed, playbook_id, template_id)
+       values ($1, $2, $3, $4, $5, $6, $7, 0, $8, $9)
        returning id`,
       [
         userId,
@@ -64,6 +65,7 @@ export async function POST(req: NextRequest) {
         body.risk_level,
         body.clauses.length,
         body.playbook_id ?? null,
+        body.template_id ?? null,
       ],
     );
 

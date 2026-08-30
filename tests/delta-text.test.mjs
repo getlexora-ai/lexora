@@ -3,7 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { deltaToLines, deltaToText, lineText } from "../src/lib/delta-text.ts";
+import { deltaToLines, deltaToText, deltaToMarkdown, lineText } from "../src/lib/delta-text.ts";
 
 test("deltaToText: joins inserts, splits on newlines, trims blank edges", () => {
   const delta = {
@@ -42,4 +42,47 @@ test("deltaToLines: keeps block + inline formatting; skips embeds", () => {
 test("deltaToText: empty / missing ops yields empty string", () => {
   assert.equal(deltaToText({}), "");
   assert.equal(deltaToText({ ops: [] }), "");
+});
+
+test("deltaToMarkdown: keeps headings, bold, and blank lines (issue #7 round-trip)", () => {
+  const delta = {
+    ops: [
+      { insert: "§ 1 Mietobjekt" },
+      { insert: "\n", attributes: { header: 2 } },
+      { insert: "Vermietet wird die Wohnung " },
+      { insert: "Musterstraße 12", attributes: { bold: true } },
+      { insert: ".\n\n" },
+      { insert: "§ 2 Miete" },
+      { insert: "\n", attributes: { header: 2 } },
+    ],
+  };
+  assert.equal(
+    deltaToMarkdown(delta),
+    "## § 1 Mietobjekt\nVermietet wird die Wohnung **Musterstraße 12**.\n\n## § 2 Miete",
+  );
+});
+
+test("deltaToMarkdown: numbers ordered lists and marks bullets", () => {
+  const delta = {
+    ops: [
+      { insert: "first" },
+      { insert: "\n", attributes: { list: "ordered" } },
+      { insert: "second" },
+      { insert: "\n", attributes: { list: "ordered" } },
+      { insert: "a point" },
+      { insert: "\n", attributes: { list: "bullet" } },
+    ],
+  };
+  assert.equal(deltaToMarkdown(delta), "1. first\n2. second\n- a point");
+});
+
+test("deltaToMarkdown: bold marker excludes trailing space so marked can parse it", () => {
+  const delta = {
+    ops: [
+      { insert: "The ", attributes: { bold: true } },
+      { insert: "Landlord", attributes: { bold: true } },
+      { insert: " agrees.\n" },
+    ],
+  };
+  assert.equal(deltaToMarkdown(delta), "**The** **Landlord** agrees.");
 });

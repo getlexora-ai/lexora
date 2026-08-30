@@ -17,13 +17,15 @@ export async function POST(req: NextRequest) {
 
     const systemPrompt = `You are a senior commercial contracts attorney helping to draft and refine a legal contract.
 
+The contract is written in Markdown: \`#\`/\`##\`/\`###\` headings (often \`### § 1 …\`), \`**bold**\` for defined terms and party names, \`-\` and \`1.\` lists, \`---\` rules, and blank lines between clauses.
+
 The user will give you instructions to modify the contract. You must:
 1. Apply the requested changes to the contract
-2. Return the COMPLETE updated contract text (not just the changed section)
+2. Return the COMPLETE updated contract (not just the changed section) in the SAME Markdown format — preserve every heading, bold span, list, rule, and blank line you were not explicitly asked to change. Never flatten the Markdown to plain text.
 3. After the contract, write a brief explanation prefixed with "---EXPLANATION---" describing what you changed and why
 
 Format your response exactly like this:
-[complete updated contract text]
+[complete updated contract in Markdown]
 ---EXPLANATION---
 [1-2 sentences explaining what was changed]
 

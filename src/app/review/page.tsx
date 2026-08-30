@@ -20,6 +20,7 @@ import type { ClauseRow } from "@/components/clauses/clause-dialog";
 import { guessTopic } from "@/lib/clause-taxonomy";
 import { cn } from "@/lib/utils";
 import { looksLikeMarkdown, markdownToHtml, stripPageSeparators } from "@/lib/markdown";
+import { deltaToMarkdown } from "@/lib/delta-text";
 
 /* Load contract text into Quill. Generated drafts / AI edits arrive as Markdown
    and are rendered as real headings/bold/lists; plain extracted text (uploads)
@@ -31,6 +32,15 @@ function setDocText(quill: any, text: string) {
   } else {
     quill.setText(stripPageSeparators(text));
   }
+}
+
+/* Apply an AI whole-document edit. Unlike `setDocText`, this never falls back to
+   plain `setText`: the Ask-AI round-trip is Markdown in, Markdown out (see
+   `liveMarkdown` + /api/contract-edit), so the reply is always run through the
+   Markdown→HTML→delta path and heading/bold/list structure survives (issue #7). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function applyDocMarkdown(quill: any, md: string) {
+  quill.setContents(quill.clipboard.convert({ html: markdownToHtml(md) }));
 }
 
 type Risk = "high" | "medium" | "low";
@@ -650,6 +660,14 @@ function ReviewContent() {
     return quillRef.current?.getText() ?? result?.extractedText ?? "";
   }
 
+  // Live editor as Markdown — for the Ask-AI edit path, which must round-trip
+  // heading/bold/list structure rather than the flattened plain text that
+  // `liveText()` returns and that used to be lost on every AI edit (issue #7).
+  function liveMarkdown() {
+    const quill = quillRef.current;
+    return quill ? deltaToMarkdown(quill.getContents()) : (result?.extractedText ?? "");
+  }
+
   async function handleRefine(card: RiskClause) {
     if (!refineNote.trim()) return;
     setRefineLoading(true);
@@ -729,7 +747,7 @@ function ReviewContent() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             instruction: q,
-            currentDocument: liveText(),
+            currentDocument: liveMarkdown(),
             history: chatHistory,
           }),
         });
@@ -738,7 +756,7 @@ function ReviewContent() {
           ?? (res.ok ? (data.explanation ?? "Contract updated.")
                      : (data.message ?? "The assistant hit an error. Please try again."));
         if (data.updatedDocument && quillRef.current) {
-          setDocText(quillRef.current, data.updatedDocument);
+          applyDocMarkdown(quillRef.current, data.updatedDocument);
           quillRef.current.history.clear();
           // Persist the AI's whole-document rewrite, and snapshot it for the audit trail.
           if (contractId) {

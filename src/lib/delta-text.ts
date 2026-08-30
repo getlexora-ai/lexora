@@ -65,3 +65,42 @@ export function lineText(line: Line): string {
 export function deltaToText(delta: Delta): string {
   return deltaToLines(delta).map(lineText).join("\n");
 }
+
+/** Wrap a run's text in Markdown emphasis, keeping surrounding whitespace
+ *  outside the markers (`**bold** ` not `**bold **`, which marked won't parse). */
+function markRun(run: Run): string {
+  const t = run.text;
+  if (!t) return t;
+  const lead  = t.match(/^\s*/)?.[0] ?? "";
+  const trail = t.match(/\s*$/)?.[0] ?? "";
+  let core = t.slice(lead.length, t.length - trail.length);
+  if (!core) return t;
+  if (run.bold)      core = `**${core}**`;
+  if (run.italic)    core = `*${core}*`;
+  if (run.underline) core = `<u>${core}</u>`;
+  return lead + core + trail;
+}
+
+/**
+ * Serialise a Quill Delta to Markdown, preserving headings, bold / italic /
+ * underline, and list structure. The inverse of `markdownToHtml()` →
+ * `quill.clipboard.convert()`. Used for the Ask-AI edit round-trip so the model
+ * sees — and is asked to return — real document structure instead of the
+ * flattened `quill.getText()` plain text that silently dropped it (issue #7).
+ */
+export function deltaToMarkdown(delta: Delta): string {
+  let ordinal = 0;
+  return deltaToLines(delta)
+    .map((line) => {
+      const body = line.runs.map(markRun).join("");
+      if (line.list === "ordered") {
+        ordinal += 1;
+        return `${ordinal}. ${body}`;
+      }
+      ordinal = 0;
+      if (line.list === "bullet") return `- ${body}`;
+      if (line.header)            return `${"#".repeat(line.header)} ${body}`;
+      return body;
+    })
+    .join("\n");
+}

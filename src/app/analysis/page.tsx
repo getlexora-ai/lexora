@@ -15,7 +15,15 @@ type SavePayload = {
   extracted_text: string;
   file_path: string | null;
   risk_level: "high" | "medium" | "low";
-  clauses: Array<{ type: string; clause: string; passage: string; issue: string; suggestion: string; sort_order: number; source: "ai" | "user" }>;
+  playbook_id?: string | null;
+  clauses: Array<{
+    type: string; clause: string; passage: string; issue: string; suggestion: string;
+    sort_order: number; source: "ai" | "user";
+    // Wave 4 — carried through when the analysis ran against a playbook.
+    reference?: string | null;
+    playbook_rule_id?: string | null;
+    verdict?: "meets" | "fallback" | "redline" | null;
+  }>;
 };
 
 type StepStatus = "pending" | "active" | "complete";
@@ -164,7 +172,7 @@ function AnalysisContent() {
         if (cancelled) return;
         await assertOk(analyseRes, "AI analysis failed", () => setRateLimited(true));
 
-        const { clauses } = await analyseRes.json();
+        const { clauses, playbook } = await analyseRes.json();
         setStepStatus(1, "complete");
         setProgress(75);
 
@@ -190,7 +198,11 @@ function AnalysisContent() {
           extracted_text: text,
           file_path: file_path ?? null,
           risk_level: riskLevel,
-          clauses: clauses.map((c: { type: string; clause: string; passage: string; issue: string; suggestion: string }, i: number) => ({
+          playbook_id: playbook?.id ?? null,
+          clauses: clauses.map((c: {
+            type: string; clause: string; passage: string; issue: string; suggestion: string;
+            reference?: string; playbook_rule_id?: string; verdict?: "meets" | "fallback" | "redline";
+          }, i: number) => ({
             type: c.type,
             clause: c.clause,
             passage: c.passage,
@@ -198,6 +210,9 @@ function AnalysisContent() {
             suggestion: c.suggestion,
             sort_order: i,
             source: "ai" as const,
+            reference: c.reference ?? null,
+            playbook_rule_id: c.playbook_rule_id ?? null,
+            verdict: c.verdict ?? null,
           })),
         };
 

@@ -11,7 +11,8 @@
     "rag:ingest": "node scripts/rag-ingest.mjs",
     "rag:eval": "node scripts/rag-eval.mjs",
     "seed:library": "node scripts/seed-library.mjs",
-    "seed:all": "npm run seed:library"
+    "seed:playbooks": "node scripts/seed-playbooks.mjs",
+    "seed:all": "npm run seed:library && npm run seed:playbooks"
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",

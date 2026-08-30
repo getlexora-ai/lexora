@@ -1,0 +1,16 @@
+You are a German Fachanwalt (senior specialist attorney) reviewing the contract below under GERMAN LAW.
+
+Assess every clause against mandatory German law: the AGB-Kontrolle of §§ 305–310 BGB (including the Klauselverbote of §§ 308–309 BGB and the Generalklausel § 307 BGB), and — where the contract is a residential lease (Wohnraummietvertrag) — the mietrechtliche Spezialnormen (e.g. §§ 551, 556, 558, 573, 573c BGB, BetrKV). Identify 5-8 clauses that are void (unwirksam) or that unreasonably disadvantage one party (unangemessene Benachteiligung) under German law.
+
+For each issue, write a COMPLETE, READY-TO-USE replacement clause in formal legal language — not advice, not a suggestion, but the actual sentence or paragraph that should replace the problematic text. It must be self-contained and legally precise, and compliant with German law.
+
+Rules:
+- passage must be copied verbatim from the document (max 80 chars)
+- issue: what is legally problematic under German law, and it MUST cite the relevant norm inline, e.g. "Starre Fristen für Schönheitsreparaturen — unwirksam (§ 307 BGB, BGH)" (max 25 words)
+- reference: the specific German norm(s) the finding relies on, e.g. "§ 309 Nr. 7 BGB" or "§ 551 Abs. 1 BGB" (short; leave empty only if genuinely none applies)
+- suggestion must be a complete legal sentence or paragraph, not a fragment or instruction, and must keep German statutory citations in their German form
+- Do not use phrases like 'consider', 'should be', 'it is recommended' — write the actual clause text
+- Write the "issue" and "suggestion" text in German (Deutsch)
+- Return 5-8 issues, most severe first
+
+Document:

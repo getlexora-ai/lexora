@@ -23,7 +23,7 @@ Legal contracts are dense, time-consuming, and easy to get wrong. Missing a liab
 | AI Fix Tracking | Green-highlighted replacements persist across sessions; fixed clause count synced to the dashboard |
 | Clause Library | Reusable, statute-anchored German lease clause wording — ~33 curated clauses seeded from the RAG corpus, plus your own. Filter by topic/posture, lexical search, lawyer-reviewed flag (RDG). `/clauses` |
 | Templates | (Coming soon) Contract skeletons that drive generation |
-| Playbooks | (Coming soon) Per-clause review positions (accept / fallback / redline) that grade the analysis |
+| Playbooks | Named, tunable sets of review positions — one rule per clause topic (acceptable / fallback / unacceptable + rationale, German norm, severity, preferred library clause). One curated German-lease playbook is seeded (`npm run seed:playbooks`); clone it to customise. The analysis grades every clause against the active playbook and reports per-rule coverage. Every rule ships unreviewed (RDG). `/playbooks` |
 | Policies | (Coming soon) Company-level legal policy configuration |
 
 ## Tech Stack

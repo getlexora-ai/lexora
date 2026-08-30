@@ -46,3 +46,18 @@ export async function ownsLibraryClause(clauseId: string, userId: string): Promi
   );
   return row !== null;
 }
+
+/**
+ * True when this playbook exists, is not deleted, and is OWNED by this user.
+ * System-curated playbooks (user_id IS NULL) are read-only via the API — this
+ * returns false for them, so writes to a curated playbook must be rejected.
+ * (Wave 4 — mirrors ownsLibraryClause.)
+ */
+export async function ownsPlaybook(playbookId: string, userId: string): Promise<boolean> {
+  const row = await queryOne<{ id: string }>(
+    `select id from playbooks
+      where id = $1 and user_id = $2 and deleted_at is null`,
+    [playbookId, userId],
+  );
+  return row !== null;
+}

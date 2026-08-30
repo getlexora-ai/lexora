@@ -29,21 +29,42 @@ The contract is written in Markdown: \`#\`/\`##\`/\`###\` headings (often \`### 
 
 Every message from the user is one of two things:
 - A QUESTION about the contract → answer it. Do NOT change the document.
-- An INSTRUCTION to change the contract (reword, reformat, add/remove/renumber a clause, "make it cleaner", etc.) → apply the change to the whole document.
+- An INSTRUCTION to change the contract → apply it.
 
 If the message could be either, prefer answering and ask what they want changed.
 
-Reply in EXACTLY this format, including the separator lines:
+For a change, choose ONE of two formats:
+
+1. TARGETED EDITS — the normal case, for changes that touch specific clauses,
+   sentences or phrases (reword a clause, change a number, rename a party,
+   delete a sentence, insert a paragraph after another). Return a JSON array of
+   edits. Each \`find\` MUST be copied VERBATIM from the current contract,
+   including its exact punctuation and capitalisation, and long enough to occur
+   exactly once. \`replace\` is the new text (use "" to delete). Keep the number
+   of edits small and precise — do not restate unchanged text.
+
+2. FULL REWRITE — only when the change genuinely spans the whole document
+   (reformat everything, renumber every section, change a style rule
+   throughout). Return the COMPLETE updated contract in the same Markdown
+   format; preserve every heading, bold span, list, rule and blank line you
+   were not asked to change.
+
+Reply in EXACTLY this format:
 
 ---MODE---
-answer
+edit
 ---ANSWER---
-<your answer to their question, OR — when MODE is edit — 1 to 3 sentences describing what you changed and why>
----DOCUMENT---
-<only when MODE is edit: the COMPLETE updated contract in the SAME Markdown format — every heading, bold span, list, rule and blank line you were not explicitly asked to change must be preserved exactly. Never return a fragment. Never flatten the Markdown to plain text.>
+<1 to 3 sentences describing what you changed and why>
+---CHANGES---
+[{ "find": "...", "replace": "...", "note": "short label" }]
 
-When MODE is \`answer\`, set the MODE line to \`answer\` and STOP after the ANSWER section — do not write the ---DOCUMENT--- line at all.
-When MODE is \`edit\`, set the MODE line to \`edit\` and include the full document.
+…OR, for a full rewrite, replace the ---CHANGES--- section with:
+
+---DOCUMENT---
+<complete updated contract in Markdown>
+
+For a QUESTION, set MODE to \`answer\`, write only the ---ANSWER--- section, and
+stop — no ---CHANGES--- or ---DOCUMENT--- line.
 
 Current contract:
 ${doc || "(empty — the user is starting a new contract from scratch)"}`;
@@ -51,8 +72,8 @@ ${doc || "(empty — the user is starting a new contract from scratch)"}`;
     const text = await askLLM({
       system: systemPrompt,
       messages: [...(history ?? []), { role: "user", content: instruction }],
-      // Matches the rest of the app. A rewrite that overruns this is caught by
-      // parseEditReply's length guard and served as an answer, not applied.
+      // Matches the rest of the app. A full rewrite that overruns this is caught
+      // by parseEditReply's length guard and served as an answer, not applied.
       maxTokens: 8192,
     });
 
@@ -61,9 +82,8 @@ ${doc || "(empty — the user is starting a new contract from scratch)"}`;
     return NextResponse.json({
       mode: parsed.mode,
       answer: parsed.answer,
-      ...(parsed.mode === "edit" && parsed.document
-        ? { updatedDocument: parsed.document }
-        : {}),
+      ...(parsed.changes ? { changes: parsed.changes } : {}),
+      ...(parsed.document ? { updatedDocument: parsed.document } : {}),
     });
   } catch (err) {
     return errorResponse(err, "contract-edit");

@@ -21,6 +21,8 @@ import { guessTopic } from "@/lib/clause-taxonomy";
 import { cn } from "@/lib/utils";
 import { looksLikeMarkdown, markdownToHtml, stripPageSeparators } from "@/lib/markdown";
 import { deltaToMarkdown } from "@/lib/delta-text";
+import { findPassage } from "@/lib/passage-match";
+import type { EditChange } from "@/lib/contract-edit-reply";
 
 /* Load contract text into Quill. Generated drafts / AI edits arrive as Markdown
    and are rendered as real headings/bold/lists; plain extracted text (uploads)
@@ -127,46 +129,6 @@ function registerQuillFormats(Quill: any) {
     whitelist: LINE_HEIGHTS,
   });
   Quill.register({ "formats/lineheight": LineHeightStyle }, true);
-}
-
-function normalise(s: string) {
-  return s.replace(/\s+/g, " ").trim().toLowerCase();
-}
-
-function findPassage(text: string, needle: string): { start: number; end: number } | null {
-  const exact = text.indexOf(needle);
-  if (exact !== -1) return { start: exact, end: exact + needle.length };
-
-  const normNeedle = normalise(needle);
-  const normText   = normalise(text);
-  const normIdx    = normText.indexOf(normNeedle);
-  if (normIdx === -1) return null;
-
-  let origIdx = 0;
-  let normCount = 0;
-  while (origIdx < text.length && normCount < normIdx) {
-    if (/\s/.test(text[origIdx])) {
-      while (origIdx < text.length && /\s/.test(text[origIdx])) origIdx++;
-      normCount++;
-    } else {
-      origIdx++;
-      normCount++;
-    }
-  }
-  const start = origIdx;
-
-  let normLen = 0;
-  while (origIdx < text.length && normLen < normNeedle.length) {
-    if (/\s/.test(text[origIdx])) {
-      while (origIdx < text.length && /\s/.test(text[origIdx])) origIdx++;
-      normLen++;
-    } else {
-      origIdx++;
-      normLen++;
-    }
-  }
-
-  return { start, end: origIdx };
 }
 
 function ReviewContent() {
@@ -795,6 +757,30 @@ function ReviewContent() {
     }).catch(err => console.error("[chat] save message failed:", err));
   }
 
+  /* Apply the AI's targeted find/replace edits to the live document, each as a
+     visible tracked change (green `--mark-applied` highlight), reusing the same
+     find + splice used by "Apply fix". Ops are matched against the current text
+     one at a time, so a `find` the model got slightly wrong is skipped and
+     reported rather than corrupting the doc. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function applyChanges(quill: any, changes: EditChange[]): { applied: number; skipped: string[] } {
+    let applied = 0;
+    const skipped: string[] = [];
+    for (const ch of changes) {
+      const match = findPassage(quill.getText(), ch.find);
+      if (!match) {
+        skipped.push(ch.find.replace(/\s+/g, " ").trim().slice(0, 50));
+        continue;
+      }
+      quill.deleteText(match.start, match.end - match.start, "user");
+      if (ch.replace) {
+        quill.insertText(match.start, ch.replace, { background: "var(--mark-applied)" }, "user");
+      }
+      applied += 1;
+    }
+    return { applied, skipped };
+  }
+
   async function handleChat() {
     const q = chatInput.trim();
     if (!q || chatLoading) return;
@@ -804,9 +790,9 @@ function ReviewContent() {
     setChatLoading(true);
     saveChatMessage("user", q);
     try {
-      // One endpoint for both jobs: it answers questions and, when the message
-      // is an instruction to change the contract, returns the rewritten
-      // document (`updatedDocument`) which we apply straight to the editor.
+      // One endpoint for both jobs: it answers questions and, for an edit,
+      // returns either targeted find/replace `changes` (the normal case) or a
+      // whole-document rewrite (`updatedDocument`, for structural changes).
       const res = await fetch("/api/contract-edit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -817,15 +803,31 @@ function ReviewContent() {
         }),
       });
       const data = await res.json();
-      const answer = rateLimitNote(res, data)
+      let answer = rateLimitNote(res, data)
         ?? (res.ok ? (data.answer ?? "Done.")
                    : (data.message ?? "The assistant hit an error. Please try again."));
 
-      if (res.ok && data.updatedDocument && quillRef.current) {
-        // Snapshot the pre-edit document first so a bad rewrite is one click to
+      const changes: EditChange[] = res.ok && Array.isArray(data.changes) ? data.changes : [];
+      const willEdit = res.ok && quillRef.current && (changes.length > 0 || !!data.updatedDocument);
+
+      if (willEdit) {
+        // Snapshot the pre-edit document first so a bad edit is one click to
         // undo from History, then apply and persist the new version.
         if (contractId) await snapshotVersion(`Before AI edit: ${q.slice(0, 72)}`);
-        applyDocMarkdown(quillRef.current, data.updatedDocument);
+
+        if (changes.length > 0) {
+          const { applied, skipped } = applyChanges(quillRef.current, changes);
+          if (applied === 0) {
+            answer += `\n\n⚠️ Couldn't locate any of the ${changes.length} passage${changes.length === 1 ? "" : "s"} to change — nothing was edited.`;
+          } else if (skipped.length > 0) {
+            answer += `\n\nApplied ${applied} of ${changes.length} changes. Couldn't locate: ${skipped.map(s => `“${s}…”`).join("; ")}`;
+          } else {
+            answer += `\n\nApplied ${applied} change${applied === 1 ? "" : "s"} to the document.`;
+          }
+        } else {
+          applyDocMarkdown(quillRef.current, data.updatedDocument);
+        }
+
         quillRef.current.history.clear();
         if (contractId) {
           fetch(`/api/contracts/${contractId}`, {

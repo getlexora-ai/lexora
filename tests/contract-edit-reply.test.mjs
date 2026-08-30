@@ -7,6 +7,79 @@ import { parseEditReply } from "../src/lib/contract-edit-reply.ts";
 
 const DOC = "# Master Services Agreement\n\n## § 1 Term\n\nThis Agreement begins on the Effective Date and continues for two years.\n\n## § 2 Fees\n\nThe Client shall pay the Fees set out in Schedule 1.";
 
+test("edit: targeted CHANGES array is parsed", () => {
+  const raw = `---MODE---
+edit
+---ANSWER---
+Renamed the Supplier to the Provider and fixed the cap.
+---CHANGES---
+[
+  { "find": "the Supplier shall indemnify", "replace": "the Provider shall indemnify", "note": "rename" },
+  { "find": "capped at the fees paid", "replace": "capped at 12 months' fees" }
+]`;
+  const r = parseEditReply(raw, DOC.length);
+  assert.equal(r.mode, "edit");
+  assert.equal(r.changes.length, 2);
+  assert.equal(r.changes[0].find, "the Supplier shall indemnify");
+  assert.equal(r.changes[0].note, "rename");
+  assert.equal(r.changes[1].note, undefined);
+  assert.equal(r.document, undefined);
+});
+
+test("edit: CHANGES wrapped in a ```json fence still parses", () => {
+  const raw = `---MODE---
+edit
+---ANSWER---
+Deleted the trailing sentence.
+---CHANGES---
+\`\`\`json
+[{ "find": " This clause is intentionally left blank.", "replace": "" }]
+\`\`\``;
+  const r = parseEditReply(raw, DOC.length);
+  assert.equal(r.mode, "edit");
+  assert.equal(r.changes.length, 1);
+  assert.equal(r.changes[0].replace, "");
+});
+
+test("edit: invalid CHANGES entries are dropped; all-invalid → answer", () => {
+  const raw = `---MODE---
+edit
+---ANSWER---
+tried
+---CHANGES---
+[ { "find": "x" }, { "replace": "y" }, { "find": "same", "replace": "same" }, 42 ]`;
+  const r = parseEditReply(raw, DOC.length);
+  assert.equal(r.mode, "answer");
+  assert.equal(r.changes, undefined);
+});
+
+test("edit: unparseable CHANGES JSON → falls back to answer", () => {
+  const raw = `---MODE---
+edit
+---ANSWER---
+Here is what I would change.
+---CHANGES---
+- find "the term" and make it three years`;
+  const r = parseEditReply(raw, DOC.length);
+  assert.equal(r.mode, "answer");
+  assert.match(r.answer, /what I would change/);
+});
+
+test("edit: CHANGES wins when the model sends both CHANGES and DOCUMENT", () => {
+  const raw = `---MODE---
+edit
+---ANSWER---
+Bumped the notice period.
+---CHANGES---
+[{ "find": "30 days", "replace": "60 days" }]
+---DOCUMENT---
+${DOC}`;
+  const r = parseEditReply(raw, DOC.length);
+  assert.equal(r.mode, "edit");
+  assert.equal(r.changes.length, 1);
+  assert.equal(r.document, undefined);
+});
+
 test("edit: well-formed MODE/ANSWER/DOCUMENT → applies", () => {
   const raw = `---MODE---
 edit

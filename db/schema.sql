@@ -38,6 +38,10 @@ create type clause_posture        as enum ('preferred', 'fallback', 'walk_away')
 -- Contract templates (see db/007_contract_templates.sql)
 create type template_source       as enum ('curated', 'user');
 
+-- Playbooks (see db/008_playbooks.sql)
+create type playbook_source  as enum ('curated', 'user');
+create type playbook_verdict as enum ('meets', 'fallback', 'redline', 'missing');
+
 
 -- ============================================================
 -- organisations
@@ -82,7 +86,8 @@ create table contracts (
   -- soft delete
   deleted_at      timestamptz,
 
-  template_id     uuid references contract_templates (id) on delete set null,  -- db/007
+  template_id     uuid,                   -- db/007: template this contract was generated from; FK added after contract_templates
+  playbook_id     uuid,                   -- db/008: last playbook analysed against; FK added after playbooks
 
   created_at      timestamptz not null default now(),
   updated_at      timestamptz not null default now()
@@ -122,6 +127,10 @@ create table risk_clauses (
   status              clause_status not null default 'pending',
   source              clause_source not null default 'ai',  -- 'ai' analysis or 'user' correction
   sort_order          int not null default 0,
+
+  reference           text,                  -- db/008: German norm the finding relies on ("§ 307 BGB")
+  playbook_rule_id    uuid,                  -- db/008: rule this finding breached; FK added in the playbooks section below
+  verdict             playbook_verdict,      -- db/008: 'meets' | 'fallback' | 'redline' | 'missing'
 
   dismissed_reason    text,                  -- why the user marked this "not an issue"
   dismissed_at        timestamptz,
@@ -308,6 +317,12 @@ create trigger contract_templates_updated_at
   before update on contract_templates
   for each row execute function set_updated_at();
 
+-- Back-reference from contracts (column declared above with a -- db/007 comment;
+-- the FK lives here because contract_templates is defined after contracts).
+alter table contracts
+  add constraint contracts_template_id_fk
+  foreign key (template_id) references contract_templates (id) on delete set null;
+
 
 -- ============================================================
 -- clause_comments
@@ -370,3 +385,92 @@ create table rate_limit_blocks (
 );
 
 create index rate_limit_blocks_created_idx on rate_limit_blocks (created_at desc);
+
+
+-- ============================================================
+-- playbooks + playbook_rules  (see db/008_playbooks.sql)
+-- ------------------------------------------------------------
+-- A playbook is a named, user-tunable set of review POSITIONS (one rule per
+-- clause topic) — the structured, editable form of src/lib/analysis.ts
+-- reviewPrompt(). The clause library is the wording; a playbook is the
+-- acceptance criteria. Coupling: playbook_rules.preferred_clause_id.
+--
+-- user_id NULL => system-curated (visible to everyone, read-only via the API).
+-- is_approved  => a licensed lawyer reviewed the positions (RDG control).
+-- ============================================================
+create table playbooks (
+  id            uuid primary key default gen_random_uuid(),
+  user_id       text,                                     -- NULL = system-curated
+  org_id        uuid references organisations (id) on delete cascade,
+
+  name          text not null,
+  description   text,
+  contract_type text not null default '',                 -- '' = any type
+  language      text not null default 'de',
+
+  source        playbook_source not null default 'user',
+  doc_ref       text,                                     -- corpus provenance; unique for curated rows
+  is_default    boolean not null default false,
+
+  is_approved   boolean not null default false,
+  approved_by   text,
+  approved_at   timestamptz,
+
+  deleted_at    timestamptz,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now()
+);
+
+alter table playbooks
+  add constraint playbooks_owner_ck check ((source = 'curated') = (user_id is null));
+
+-- At most one default per (user, contract_type); NULLs distinct => curated rows
+-- are unconstrained (the seed guards curated defaults itself).
+create unique index playbooks_default_idx
+  on playbooks (user_id, contract_type) where is_default and deleted_at is null;
+create unique index playbooks_curated_ref_idx
+  on playbooks (doc_ref) where source = 'curated';
+create index playbooks_user_idx
+  on playbooks (user_id, created_at desc) where deleted_at is null;
+
+create trigger playbooks_updated_at
+  before update on playbooks
+  for each row execute function set_updated_at();
+
+
+create table playbook_rules (
+  id                  uuid primary key default gen_random_uuid(),
+  playbook_id         uuid not null references playbooks (id) on delete cascade,
+
+  clause_type         text not null,                       -- src/lib/clause-taxonomy.ts key
+  topic               text not null,                       -- human label, snapshot at author time
+  acceptable          text not null,                       -- default-OK position
+  fallback            text,                                -- tolerable compromise
+  unacceptable        text not null,                       -- must be flagged (redline)
+  rationale           text,
+  reference           text,                                -- "§ 551 Abs. 1 BGB"
+
+  preferred_clause_id uuid references clause_library (id) on delete set null,
+  severity            risk_level not null default 'medium',
+  is_required         boolean not null default false,
+  sort_order          int not null default 0,
+
+  created_at          timestamptz not null default now(),
+  updated_at          timestamptz not null default now()
+);
+
+create index playbook_rules_order_idx on playbook_rules (playbook_id, sort_order);
+create index playbook_rules_type_idx  on playbook_rules (playbook_id, clause_type);
+
+create trigger playbook_rules_updated_at
+  before update on playbook_rules
+  for each row execute function set_updated_at();
+
+-- Back-references from the base tables (columns declared above with a -- db/008
+-- comment; the FKs live here because playbooks/playbook_rules are defined last).
+alter table contracts
+  add constraint contracts_playbook_id_fk
+  foreign key (playbook_id) references playbooks (id) on delete set null;
+alter table risk_clauses
+  add constraint risk_clauses_playbook_rule_id_fk
+  foreign key (playbook_rule_id) references playbook_rules (id) on delete set null;

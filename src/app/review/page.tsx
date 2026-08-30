@@ -13,6 +13,8 @@ import { RdgStrip } from "@/components/rdg-notice";
 import { BrandMark } from "@/components/brand-mark";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { analysisStore, RiskClause } from "@/lib/analysis-store";
+import { CoverageList } from "@/components/playbooks/coverage-list";
+import type { CoverageRow, PlaybookRule } from "@/components/playbooks/types";
 import { cn } from "@/lib/utils";
 import { looksLikeMarkdown, markdownToHtml, stripPageSeparators } from "@/lib/markdown";
 
@@ -49,7 +51,7 @@ const RAIL = [
   { icon: BarChart3, label: "Risk dashboard" },
 ];
 
-const NAV_TABS = ["Review", "Compare", "History", "Approval"];
+const NAV_TABS = ["Review", "Playbook", "Compare", "History", "Approval"];
 
 const QUILL_TOOLBAR = [
   ["bold", "italic", "underline", "strike"],
@@ -153,6 +155,14 @@ function ReviewContent() {
   const [chatLoading, setChatLoading] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const [reanalysing, setReanalysing] = useState(false);
+
+  // Wave 4 — Playbook tab: selected playbook + per-rule coverage from the last
+  // playbook-aware (re)analysis. Rule metadata is cached so a clause card can
+  // show a "Playbook · <topic> · <verdict>" chip.
+  const [playbookId, setPlaybookId] = useState("");
+  const [coverage, setCoverage] = useState<CoverageRow[]>([]);
+  const [playbookRules, setPlaybookRules] = useState<PlaybookRule[]>([]);
+  const ruleMetaById = new Map(playbookRules.map((r) => [r.id, r]));
 
   // Floating selection toolbar
   type SelectionToolbar = { top: number; left: number; text: string };
@@ -724,7 +734,9 @@ function ReviewContent() {
       const res = await fetch(`/api/contracts/${contractId}/reanalyse`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: liveText() }),
+        // Wave 4 — pass the chosen playbook (empty => server falls back to the
+        // user's workspace default for this contract type, or no playbook).
+        body: JSON.stringify({ text: liveText(), playbookId: playbookId || undefined, contractType }),
       });
       const data = await res.json();
       if (rateLimitNote(res, data)) return;
@@ -737,8 +749,62 @@ function ReviewContent() {
         setFixedCount(0);
         setActiveCardId(null);
       }
+      setCoverage(Array.isArray(data.coverage) ? data.coverage : []);
+      if (data.playbook?.id) setPlaybookId(data.playbook.id);
     } finally {
       setReanalysing(false);
+    }
+  }
+
+  // Keep rule metadata for the coverage list + clause chips in sync.
+  useEffect(() => {
+    if (!playbookId) {
+      setPlaybookRules([]);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/playbooks/${playbookId}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled) setPlaybookRules(d.rules ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setPlaybookRules([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [playbookId]);
+
+  /** Redline coverage row → jump to the Review tab and select its finding. */
+  function openFindingForRule(ruleId: string) {
+    const hit = clauses.find((c) => c.playbook_rule_id === ruleId);
+    setActiveTab("Review");
+    if (hit) setActiveCardId(hit.id);
+  }
+
+  /** Missing rule with a preferred clause → append that wording to the document. */
+  async function insertPreferredClause(rule: PlaybookRule) {
+    const quill = quillRef.current;
+    if (!quill || !rule.preferred_clause_id) return;
+    try {
+      const res = await fetch(`/api/clause-library/${rule.preferred_clause_id}`);
+      const data = await res.json();
+      const text: string | undefined = data?.clause?.content;
+      if (!text) return;
+      const end = quill.getLength();
+      quill.insertText(end, `\n\n${text}\n`, { background: "var(--mark-applied)" });
+      const delta = quill.getContents();
+      if (contractId) {
+        await fetch(`/api/contracts/${contractId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ quill_delta: delta }),
+        }).catch((err) => console.error("[insertPreferredClause] patch failed:", err));
+      }
+      void snapshotVersion(`Added from playbook: ${rule.topic}`);
+    } catch (err) {
+      console.error("[insertPreferredClause] failed:", err);
     }
   }
 
@@ -1008,6 +1074,33 @@ function ReviewContent() {
                   </li>
                 ))}
               </ol>
+            )}
+          </div>
+        </main>
+      ) : activeTab === "Playbook" ? (
+        <main className="overflow-y-auto p-6">
+          <div className="mx-auto max-w-3xl space-y-4">
+            <div>
+              <h3 className="text-[15px] font-semibold">Playbook coverage</h3>
+              <p className="text-[13px] text-text-2">
+                How this contract measures up against a set of review positions.
+                {" "}A playbook whose badge reads “Unreviewed” has not been checked by a lawyer —
+                “redline by your playbook” is not the same as “void as a matter of law”.
+              </p>
+            </div>
+            {!contractId ? (
+              <p className="text-[13px] text-text-3">Save this contract first to run a playbook.</p>
+            ) : (
+              <CoverageList
+                contractType={contractType}
+                playbookId={playbookId}
+                onPlaybookChange={setPlaybookId}
+                coverage={coverage}
+                reanalysing={reanalysing}
+                onReanalyse={handleReanalyse}
+                onOpenFinding={openFindingForRule}
+                onInsertPreferredClause={insertPreferredClause}
+              />
             )}
           </div>
         </main>
@@ -1324,6 +1417,18 @@ function ReviewContent() {
                         {card.source === "user" && (
                           <span className="shrink-0 rounded-full border border-border px-1.5 font-mono text-[9px] tracking-[0.05em] text-text-3 uppercase">
                             Added by you
+                          </span>
+                        )}
+                        {card.playbook_rule_id && (
+                          <span
+                            className="shrink-0 rounded-full border border-border px-1.5 text-[9px] text-text-3"
+                            title={ruleMetaById.get(card.playbook_rule_id)?.unacceptable ?? undefined}
+                          >
+                            Playbook
+                            {ruleMetaById.get(card.playbook_rule_id)?.topic
+                              ? ` · ${ruleMetaById.get(card.playbook_rule_id)!.topic}`
+                              : ""}
+                            {card.verdict ? ` · ${card.verdict}` : ""}
                           </span>
                         )}
                         <ChevronRight

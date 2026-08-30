@@ -60,3 +60,17 @@ export async function ownsTemplate(templateId: string, userId: string): Promise<
   );
   return row !== null;
 }
+
+/**
+ * True when this playbook exists, is not deleted, and is OWNED by this user.
+ * System-curated playbooks (user_id IS NULL) are read-only via the API — this
+ * returns false for them, so writes to a curated playbook must be rejected.
+ */
+export async function ownsPlaybook(playbookId: string, userId: string): Promise<boolean> {
+  const row = await queryOne<{ id: string }>(
+    `select id from playbooks
+      where id = $1 and user_id = $2 and deleted_at is null`,
+    [playbookId, userId],
+  );
+  return row !== null;
+}

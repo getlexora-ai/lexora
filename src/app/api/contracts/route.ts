@@ -32,6 +32,7 @@ export async function POST(req: NextRequest) {
     extracted_text: string;
     file_path?: string | null;
     risk_level: "high" | "medium" | "low";
+    playbook_id?: string | null;          // db/008 — set when analysed against a playbook
     clauses: Array<{
       type: "high" | "medium" | "low";
       clause: string;
@@ -40,6 +41,10 @@ export async function POST(req: NextRequest) {
       suggestion: string;
       sort_order: number;
       source?: "ai" | "user";
+      // db/008 — carried through from a playbook-aware analysis (optional).
+      reference?: string | null;
+      playbook_rule_id?: string | null;
+      verdict?: "meets" | "fallback" | "redline" | null;
     }>;
   };
 
@@ -47,8 +52,8 @@ export async function POST(req: NextRequest) {
     // Insert contract row
     const contract = await queryOne<{ id: string }>(
       `insert into contracts
-         (user_id, name, contract_type, extracted_text, file_path, risk_level, total_issues, issues_fixed)
-       values ($1, $2, $3, $4, $5, $6, $7, 0)
+         (user_id, name, contract_type, extracted_text, file_path, risk_level, total_issues, issues_fixed, playbook_id)
+       values ($1, $2, $3, $4, $5, $6, $7, 0, $8)
        returning id`,
       [
         userId,
@@ -58,6 +63,7 @@ export async function POST(req: NextRequest) {
         body.file_path ?? null,
         body.risk_level,
         body.clauses.length,
+        body.playbook_id ?? null,
       ],
     );
 
@@ -70,19 +76,21 @@ export async function POST(req: NextRequest) {
       const values: string[] = [];
       const params: unknown[] = [];
       body.clauses.forEach((c, i) => {
-        const b = i * 9;
+        const b = i * 12;
         values.push(
-          `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6}, $${b + 7}, $${b + 8}, $${b + 9})`,
+          `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6}, $${b + 7}, $${b + 8}, $${b + 9}, $${b + 10}, $${b + 11}, $${b + 12})`,
         );
         params.push(
           contract.id, c.type, c.clause, c.passage, c.issue, c.suggestion, c.sort_order, "pending",
           c.source ?? "ai",
+          c.reference ?? null, c.playbook_rule_id ?? null, c.verdict ?? null,
         );
       });
 
       const inserted = await query<{ id: string; sort_order: number }>(
         `insert into risk_clauses
-           (contract_id, type, clause, passage, issue, suggestion, sort_order, status, source)
+           (contract_id, type, clause, passage, issue, suggestion, sort_order, status, source,
+            reference, playbook_rule_id, verdict)
          values ${values.join(", ")}
          returning id, sort_order`,
         params,

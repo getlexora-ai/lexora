@@ -46,3 +46,17 @@ export async function ownsLibraryClause(clauseId: string, userId: string): Promi
   );
   return row !== null;
 }
+
+/**
+ * True when this contract template exists, is not deleted, and is OWNED by this
+ * user. System-curated rows (user_id IS NULL) are read-only via the API, so
+ * this returns false for them — writes to a curated row must be rejected.
+ */
+export async function ownsTemplate(templateId: string, userId: string): Promise<boolean> {
+  const row = await queryOne<{ id: string }>(
+    `select id from contract_templates
+      where id = $1 and user_id = $2 and deleted_at is null`,
+    [templateId, userId],
+  );
+  return row !== null;
+}

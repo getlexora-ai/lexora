@@ -302,9 +302,13 @@ function DashboardContent() {
   const [filter, setFilter]                 = useState<Filter>("All");
 
   // Auto-open the matching modal when the sidebar navigates here with
-  // ?generate=1 or ?upload=1.
+  // ?generate=1 or ?upload=1. ?template=1 opens straight on the "From template"
+  // step; ?template=<id> preselects that template.
+  const [tplStart, setTplStart] = useState<{ from: boolean; id?: string }>({ from: false });
   useEffect(() => {
     if (searchParams.get("generate") === "1") {
+      const t = searchParams.get("template");
+      setTplStart({ from: t != null, id: t && t !== "1" ? t : undefined });
       setCreateOpen(true);
       router.replace("/dashboard");
     } else if (searchParams.get("upload") === "1") {
@@ -373,7 +377,7 @@ function DashboardContent() {
             {seeding ? <Loader2 className="size-4 animate-spin" /> : <FlaskConical className="size-4" />}
             Seed test data
           </Button>
-          <Button variant="outline" onClick={() => setCreateOpen(true)}>
+          <Button variant="outline" onClick={() => { setTplStart({ from: false }); setCreateOpen(true); }}>
             <Sparkles className="size-4" />
             Generate
           </Button>
@@ -400,17 +404,30 @@ function DashboardContent() {
           open={createOpen}
           onClose={() => setCreateOpen(false)}
           generating={generating}
-          onGenerate={async ({ name, contractType, party1, party2, language, keyTerms, propertyAddress, baseRentEur, operatingCostsEur, depositEur }) => {
+          startFromTemplate={tplStart.from}
+          initialTemplateId={tplStart.id}
+          onGenerate={async ({ name, contractType, party1, party2, language, keyTerms, propertyAddress, baseRentEur, operatingCostsEur, depositEur, templateId, values, useRender }) => {
             setGenerating(true);
             try {
-              // Step 1: generate the initial draft. German residential leases are
-              // routed server-side through the grounded RAG pipeline.
-              const genRes = await fetch("/api/generate", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ contractType, party1, party2, language, keyTerms, propertyAddress, baseRentEur, operatingCostsEur, depositEur }),
-              });
+              // Step 1: produce the initial draft.
+              //  - template + no key terms  → instant pure render (no AI)
+              //  - template + key terms     → AI generate, template as a binding constraint
+              //  - no template              → AI generate (German leases go through the grounded RAG pipeline)
+              const genRes = useRender && templateId
+                ? await fetch(`/api/templates/${templateId}/render`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ values, language }),
+                  })
+                : await fetch("/api/generate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ contractType, party1, party2, language, keyTerms, propertyAddress, baseRentEur, operatingCostsEur, depositEur, templateId, values }),
+                  });
               const genData = await genRes.json();
+              if (Array.isArray(genData.missing) && genData.missing.length > 0) {
+                setSeedError(`Template rendered with unfilled fields: ${genData.missing.join(", ")}. You can fix them in the editor.`);
+              }
               if (genRes.status === 429) {
                 const mins = Math.max(1, Math.round((Number(genData.retry_after) || 3600) / 60));
                 setSeedError(

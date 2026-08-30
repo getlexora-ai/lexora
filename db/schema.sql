@@ -35,6 +35,9 @@ create type chat_role         as enum ('user', 'assistant');
 create type clause_library_source as enum ('curated', 'user', 'imported');
 create type clause_posture        as enum ('preferred', 'fallback', 'walk_away');
 
+-- Contract templates (see db/007_contract_templates.sql)
+create type template_source       as enum ('curated', 'user');
+
 
 -- ============================================================
 -- organisations
@@ -78,6 +81,8 @@ create table contracts (
 
   -- soft delete
   deleted_at      timestamptz,
+
+  template_id     uuid references contract_templates (id) on delete set null,  -- db/007
 
   created_at      timestamptz not null default now(),
   updated_at      timestamptz not null default now()
@@ -238,6 +243,69 @@ create index clause_library_fts_idx on clause_library using gin (
 
 create trigger clause_library_updated_at
   before update on clause_library
+  for each row execute function set_updated_at();
+
+
+-- ============================================================
+-- contract_templates — placeholder-driven contract skeletons that
+-- feed the generator. Grown / created by db/007_contract_templates.sql.
+-- One curated template is seeded from the RAG corpus' standard lease
+-- (scripts/seed-templates.mjs).
+--
+-- user_id NULL  => system-curated, visible to every user, immutable via the API.
+-- user_id set   => owned by that Clerk user.
+-- body          => authoritative text with {{placeholders}}.
+-- sections      => parallel structured index, one entry per §-clause.
+-- variables     => per-placeholder metadata (label, type, maps_to, derived expr).
+-- is_approved   => a licensed lawyer has reviewed this wording (RDG control).
+-- ============================================================
+create table contract_templates (
+  id                    uuid primary key default gen_random_uuid(),
+  user_id               text,                                  -- NULL = system-curated
+  org_id                uuid references organisations (id) on delete cascade,
+
+  name                  text not null,
+  name_en               text,
+  description           text,
+
+  contract_type         text not null,                         -- matches create-contract-modal CONTRACT_TYPES
+  language              text not null default 'de',
+
+  body                  text not null,                         -- authoritative, with {{placeholders}}
+  body_en               text,
+  sections              jsonb not null default '[]',
+  variables             jsonb not null default '[]',
+
+  source                template_source not null default 'user',
+  doc_ref               text,                                  -- provenance; unique for curated rows
+  based_on_contract_id  uuid references contracts (id) on delete set null,
+
+  is_approved           boolean not null default false,
+  approved_by           text,
+  approved_at           timestamptz,
+
+  tags                  text[] not null default '{}',
+
+  deleted_at            timestamptz,
+  created_at            timestamptz not null default now(),
+  updated_at            timestamptz not null default now()
+);
+
+-- A curated row has no owner; every other row must have one.
+alter table contract_templates
+  add constraint contract_templates_owner_ck
+  check ((source = 'curated') = (user_id is null));
+
+create unique index contract_templates_curated_ref_idx
+  on contract_templates (doc_ref) where source = 'curated';
+create index contract_templates_user_idx
+  on contract_templates (user_id, created_at desc) where deleted_at is null;
+create index contract_templates_type_idx
+  on contract_templates (contract_type) where deleted_at is null;
+create index contract_templates_tags_idx on contract_templates using gin (tags);
+
+create trigger contract_templates_updated_at
+  before update on contract_templates
   for each row execute function set_updated_at();
 
 

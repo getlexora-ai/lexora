@@ -14,7 +14,8 @@ export type ComputeRoute =
   | "contract-edit"
   | "chat"
   | "reanalyse"
-  | "clause-search";
+  | "clause-search"
+  | "template-vars";
 
 /**
  * Per-key request caps. Single source of truth — tune from the KPI
@@ -34,6 +35,8 @@ export const LIMITS: Record<ComputeRoute | "compute", Pair> = {
   reanalyse:       { hour: 20,  day: 60  },
   // clause-library semantic search — one cheap embedding call per query
   "clause-search": { hour: 60,  day: 200 },
+  // LLM-assisted template de-identification (from the "Save as template" flow)
+  "template-vars": { hour: 15,  day: 40  },
   // global guard across ALL compute routes for one user
   compute:         { hour: 200, day: 600 },
 };

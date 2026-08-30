@@ -65,9 +65,10 @@ Strikte Regeln:
 - Verwende KEINE nach BGH-Rechtsprechung unwirksamen Klauseln (starre Fristen bei Schönheitsreparaturen,
   Schönheitsreparaturen bei unrenoviert übergebener Wohnung, generelles Tierhaltungsverbot).
 - Keine Platzhalter wie [EINFÜGEN]. Nutze die übergebenen Vertragsdaten und sonst marktübliche Standardwerte.
-- Gliedere in nummerierte Paragraphen (§ 1 Mietobjekt, § 2 Mietzeit, § 3 Miete, § 4 Betriebskosten,
-  § 5 Kaution, § 6 Schönheitsreparaturen, § 7 Kleinreparaturen, § 8 Nutzung/Untervermietung, § 9 Kündigung,
-  § 10 Schlussbestimmungen) und schließe mit Unterschriftszeilen.
+- Gliedere in nummerierte Paragraphen (§ 1 Mietobjekt, § 2 Mietzeit, § 3 Miete und Zahlung,
+  § 4 Betriebskosten, § 5 Kaution, § 6 Schönheitsreparaturen, § 7 Kleinreparaturen,
+  § 8 Nutzung/Untervermietung/Tierhaltung, § 9 Instandhaltung und Modernisierung, § 10 Kündigung,
+  § 11 Schlussbestimmungen) und schließe mit Unterschriftszeilen.
 - Antworte NUR mit dem Vertragstext, ohne Vorbemerkung.`;
 
 /**
@@ -103,13 +104,25 @@ export async function generateGermanRentalContract(
     topK: params.topK ?? 12,
   });
 
+  const templateBlock = params.templateBody?.trim()
+    ? `VERBINDLICHE VERTRAGSSTRUKTUR (Vorlage):
+
+${params.templateBody.trim()}
+
+=== ENDE VERTRAGSSTRUKTUR ===
+
+Übernimm diese Struktur und Klauseltexte unverändert, soweit die Mandantenvorgaben nichts anderes verlangen.
+
+`
+    : "";
+
   const prompt = `RECHTSGRUNDLAGEN (nur diese verwenden):
 
 ${renderContext(context)}
 
 === ENDE RECHTSGRUNDLAGEN ===
 
-VERTRAGSDATEN:
+${templateBlock}VERTRAGSDATEN:
 - Vermieter: ${params.landlord}
 - Mieter: ${params.tenant}
 - Mietobjekt: ${params.propertyAddress}

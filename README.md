@@ -21,7 +21,9 @@ Legal contracts are dense, time-consuming, and easy to get wrong. Missing a liab
 | Review Editor | Side-by-side Quill rich text editor and AI risk card panel with one-click clause replacement |
 | Persistent Contracts | Every analysed contract is saved locally — re-open, edit, and continue fixing at any time |
 | AI Fix Tracking | Green-highlighted replacements persist across sessions; fixed clause count synced to the dashboard |
-| Clause Library | (Coming soon) Saved and approved clause templates |
+| Clause Library | Reusable, statute-anchored German lease clause wording — ~33 curated clauses seeded from the RAG corpus, plus your own. Filter by topic/posture, lexical search, lawyer-reviewed flag (RDG). `/clauses` |
+| Templates | Placeholder-driven contract skeletons that feed the generator. One curated **Standard-Wohnraummietvertrag** seeded from the RAG corpus (11 §-clauses, `{{variables}}`, a structured `sections` index); plus your own — save any contract as a template, de-identify literals into variables (with an optional AI "Suggest variables" pass), then render instantly or generate with AI. Lawyer-reviewed flag (RDG). `/templates` |
+| Playbooks | Named, tunable sets of review positions — one rule per clause topic (acceptable / fallback / unacceptable + rationale, German norm, severity, preferred library clause). One curated German-lease playbook is seeded (`npm run seed:playbooks`); clone it to customise. The analysis grades every clause against the active playbook and reports per-rule coverage. Every rule ships unreviewed (RDG). `/playbooks` |
 | Policies | (Coming soon) Company-level legal policy configuration |
 
 ## Tech Stack

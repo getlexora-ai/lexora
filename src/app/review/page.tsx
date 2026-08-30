@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft, ChevronRight, Sparkles, Send, Loader2, MessageSquare,
   Plus, X, Check, FileText, LayoutGrid, BookOpen, BarChart3, Settings,
-  Undo2, Wand2,
+  Undo2, Wand2, Library,
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,11 @@ import { RdgStrip } from "@/components/rdg-notice";
 import { BrandMark } from "@/components/brand-mark";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { analysisStore, RiskClause } from "@/lib/analysis-store";
+import { CoverageList } from "@/components/playbooks/coverage-list";
+import type { CoverageRow, PlaybookRule } from "@/components/playbooks/types";
+import { ClausePicker } from "@/components/clauses/clause-picker";
+import type { ClauseRow } from "@/components/clauses/clause-dialog";
+import { guessTopic } from "@/lib/clause-taxonomy";
 import { cn } from "@/lib/utils";
 import { looksLikeMarkdown, markdownToHtml, stripPageSeparators } from "@/lib/markdown";
 
@@ -45,11 +50,11 @@ const RISK_STYLES: Record<Risk, { rail: string; pill: string; label: string }> =
 const RAIL = [
   { icon: LayoutGrid, label: "Home", href: "/dashboard" },
   { icon: FileText, label: "Contracts", href: "/dashboard", on: true },
-  { icon: BookOpen, label: "Clause library" },
+  { icon: BookOpen, label: "Clause library", href: "/clauses" },
   { icon: BarChart3, label: "Risk dashboard" },
 ];
 
-const NAV_TABS = ["Review", "Compare", "History", "Approval"];
+const NAV_TABS = ["Review", "Playbook", "Compare", "History", "Approval"];
 
 const QUILL_TOOLBAR = [
   ["bold", "italic", "underline", "strike"],
@@ -154,6 +159,14 @@ function ReviewContent() {
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const [reanalysing, setReanalysing] = useState(false);
 
+  // Wave 4 — Playbook tab: selected playbook + per-rule coverage from the last
+  // playbook-aware (re)analysis. Rule metadata is cached so a clause card can
+  // show a "Playbook · <topic> · <verdict>" chip.
+  const [playbookId, setPlaybookId] = useState("");
+  const [coverage, setCoverage] = useState<CoverageRow[]>([]);
+  const [playbookRules, setPlaybookRules] = useState<PlaybookRule[]>([]);
+  const ruleMetaById = new Map(playbookRules.map((r) => [r.id, r]));
+
   // Floating selection toolbar
   type SelectionToolbar = { top: number; left: number; text: string };
   const [selectionToolbar, setSelectionToolbar] = useState<SelectionToolbar | null>(null);
@@ -163,6 +176,50 @@ function ReviewContent() {
 
   // Set by any compute route returning 429; shown as a transient toast.
   const [computeError, setComputeError] = useState<string | null>(null);
+
+  // Clause library (Wave 2): the card whose "Insert from library" picker is
+  // open, and the set of cards already banked to the library this session.
+  const [pickerCardId, setPickerCardId] = useState<string | null>(null);
+  const [savedClauseIds, setSavedClauseIds] = useState<Set<string>>(new Set());
+
+  /** Swap a card's suggested wording for a library clause (local + persisted). */
+  function insertFromLibrary(card: RiskClause, picked: ClauseRow) {
+    setClauses(prev => prev.map(c => c.id === card.id ? { ...c, suggestion: picked.content } : c));
+    if (contractId) {
+      fetch(`/api/contracts/${contractId}/clauses/${card.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refined_suggestion: picked.content }),
+      }).catch(err => console.error("[insertFromLibrary] clause patch failed:", err));
+    }
+    setComputeError(`Inserted "${picked.title}" — review it, then Apply fix.`);
+  }
+
+  /** Bank a card's current suggested wording to the personal clause library. */
+  async function saveToLibrary(card: RiskClause) {
+    if (!contractId) {
+      setComputeError("Save the contract first, then you can add its clauses to your library.");
+      return;
+    }
+    try {
+      const res = await fetch("/api/clause-library/from-suggestion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contractId,
+          title: card.clause,
+          content: card.suggestion,
+          clause_type: guessTopic(card.clause),
+          reference: (card as RiskClause & { reference?: string }).reference ?? null,
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error ?? "Save failed");
+      setSavedClauseIds(prev => new Set(prev).add(card.id));
+      setComputeError("Saved to your clause library.");
+    } catch (e) {
+      setComputeError((e as Error).message);
+    }
+  }
   // Returns the message when `res` is a 429 (and shows the toast), else null.
   function rateLimitNote(res: Response, data: { retry_after?: number; scope?: string }): string | null {
     if (res.status !== 429) return null;
@@ -724,7 +781,9 @@ function ReviewContent() {
       const res = await fetch(`/api/contracts/${contractId}/reanalyse`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: liveText() }),
+        // Wave 4 — pass the chosen playbook (empty => server falls back to the
+        // user's workspace default for this contract type, or no playbook).
+        body: JSON.stringify({ text: liveText(), playbookId: playbookId || undefined, contractType }),
       });
       const data = await res.json();
       if (rateLimitNote(res, data)) return;
@@ -737,8 +796,62 @@ function ReviewContent() {
         setFixedCount(0);
         setActiveCardId(null);
       }
+      setCoverage(Array.isArray(data.coverage) ? data.coverage : []);
+      if (data.playbook?.id) setPlaybookId(data.playbook.id);
     } finally {
       setReanalysing(false);
+    }
+  }
+
+  // Keep rule metadata for the coverage list + clause chips in sync.
+  useEffect(() => {
+    if (!playbookId) {
+      setPlaybookRules([]);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/playbooks/${playbookId}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled) setPlaybookRules(d.rules ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setPlaybookRules([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [playbookId]);
+
+  /** Redline coverage row → jump to the Review tab and select its finding. */
+  function openFindingForRule(ruleId: string) {
+    const hit = clauses.find((c) => c.playbook_rule_id === ruleId);
+    setActiveTab("Review");
+    if (hit) setActiveCardId(hit.id);
+  }
+
+  /** Missing rule with a preferred clause → append that wording to the document. */
+  async function insertPreferredClause(rule: PlaybookRule) {
+    const quill = quillRef.current;
+    if (!quill || !rule.preferred_clause_id) return;
+    try {
+      const res = await fetch(`/api/clause-library/${rule.preferred_clause_id}`);
+      const data = await res.json();
+      const text: string | undefined = data?.clause?.content;
+      if (!text) return;
+      const end = quill.getLength();
+      quill.insertText(end, `\n\n${text}\n`, { background: "var(--mark-applied)" });
+      const delta = quill.getContents();
+      if (contractId) {
+        await fetch(`/api/contracts/${contractId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ quill_delta: delta }),
+        }).catch((err) => console.error("[insertPreferredClause] patch failed:", err));
+      }
+      void snapshotVersion(`Added from playbook: ${rule.topic}`);
+    } catch (err) {
+      console.error("[insertPreferredClause] failed:", err);
     }
   }
 
@@ -1008,6 +1121,33 @@ function ReviewContent() {
                   </li>
                 ))}
               </ol>
+            )}
+          </div>
+        </main>
+      ) : activeTab === "Playbook" ? (
+        <main className="overflow-y-auto p-6">
+          <div className="mx-auto max-w-3xl space-y-4">
+            <div>
+              <h3 className="text-[15px] font-semibold">Playbook coverage</h3>
+              <p className="text-[13px] text-text-2">
+                How this contract measures up against a set of review positions.
+                {" "}A playbook whose badge reads “Unreviewed” has not been checked by a lawyer —
+                “redline by your playbook” is not the same as “void as a matter of law”.
+              </p>
+            </div>
+            {!contractId ? (
+              <p className="text-[13px] text-text-3">Save this contract first to run a playbook.</p>
+            ) : (
+              <CoverageList
+                contractType={contractType}
+                playbookId={playbookId}
+                onPlaybookChange={setPlaybookId}
+                coverage={coverage}
+                reanalysing={reanalysing}
+                onReanalyse={handleReanalyse}
+                onOpenFinding={openFindingForRule}
+                onInsertPreferredClause={insertPreferredClause}
+              />
             )}
           </div>
         </main>
@@ -1326,6 +1466,18 @@ function ReviewContent() {
                             Added by you
                           </span>
                         )}
+                        {card.playbook_rule_id && (
+                          <span
+                            className="shrink-0 rounded-full border border-border px-1.5 text-[9px] text-text-3"
+                            title={ruleMetaById.get(card.playbook_rule_id)?.unacceptable ?? undefined}
+                          >
+                            Playbook
+                            {ruleMetaById.get(card.playbook_rule_id)?.topic
+                              ? ` · ${ruleMetaById.get(card.playbook_rule_id)!.topic}`
+                              : ""}
+                            {card.verdict ? ` · ${card.verdict}` : ""}
+                          </span>
+                        )}
                         <ChevronRight
                           className={cn(
                             "ml-auto size-3.5 shrink-0 text-text-3 transition-transform",
@@ -1350,18 +1502,28 @@ function ReviewContent() {
                           <div>
                             <div className="mb-1 flex items-center justify-between">
                               <p className="eyebrow">Suggested wording — for your review</p>
-                              <button
-                                type="button"
-                                className="text-[11px] text-text-3 transition-colors hover:text-foreground"
-                                onClick={() => {
-                                  navigator.clipboard?.writeText(card.suggestion).then(
-                                    () => setComputeError("Suggested wording copied to the clipboard."),
-                                    () => setComputeError("Couldn't copy — select the text manually."),
-                                  );
-                                }}
-                              >
-                                Copy
-                              </button>
+                              <div className="flex items-center gap-2.5">
+                                <button
+                                  type="button"
+                                  className="text-[11px] text-text-3 transition-colors hover:text-foreground disabled:opacity-50"
+                                  disabled={savedClauseIds.has(card.id)}
+                                  onClick={() => saveToLibrary(card)}
+                                >
+                                  {savedClauseIds.has(card.id) ? "Saved ✓" : "Save to library"}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="text-[11px] text-text-3 transition-colors hover:text-foreground"
+                                  onClick={() => {
+                                    navigator.clipboard?.writeText(card.suggestion).then(
+                                      () => setComputeError("Suggested wording copied to the clipboard."),
+                                      () => setComputeError("Couldn't copy — select the text manually."),
+                                    );
+                                  }}
+                                >
+                                  Copy
+                                </button>
+                              </div>
                             </div>
                             <p className="rounded-md border border-border bg-surface-2 p-2.5 text-[12.5px] leading-[1.6] text-foreground">
                               {card.suggestion}
@@ -1454,7 +1616,7 @@ function ReviewContent() {
                       {/* Actions — always visible, so a fix can be applied
                           without expanding the card. */}
                       {dismissingId !== card.id && (
-                        <div className="flex gap-1.5 border-t border-border p-2.5">
+                        <div className="flex flex-wrap gap-1.5 border-t border-border p-2.5">
                           <Button
                             size="sm"
                             className="flex-1"
@@ -1473,6 +1635,14 @@ function ReviewContent() {
                           >
                             <Wand2 className="size-3.5" />
                             {isRefining ? "Cancel" : "Refine"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => { setActiveCardId(card.id); setPickerCardId(card.id); }}
+                          >
+                            <Library className="size-3.5" />
+                            Library
                           </Button>
                           <Button
                             size="sm"
@@ -1612,6 +1782,19 @@ function ReviewContent() {
       )}
 
       <ThemeToggle floating />
+
+      {/* Clause-library picker for "Library" on a risk card (Wave 2). */}
+      {(() => {
+        const card = clauses.find(c => c.id === pickerCardId);
+        return (
+          <ClausePicker
+            open={!!card}
+            onClose={() => setPickerCardId(null)}
+            clauseTypeHint={card ? guessTopic(card.clause) : undefined}
+            onPick={(picked) => { if (card) insertFromLibrary(card, picked); }}
+          />
+        );
+      })()}
     </div>
   );
 }

@@ -9,6 +9,10 @@ export type RiskClause = {
   passage: string;      // exact verbatim text from the document
   suggestion: string;   // complete ready-to-use replacement clause
   source?: "ai" | "user"; // "user" when the reviewer added it as a missed clause
+  // Wave 4 (playbooks) — present only when the analysis ran against a playbook.
+  reference?: string;             // German norm the finding relies on ("§ 307 BGB")
+  playbook_rule_id?: string;      // the playbook rule this finding breached
+  verdict?: "meets" | "fallback" | "redline";
 };
 
 export type AnalysisResult = {

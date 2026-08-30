@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { askLLM } from "@/lib/llm";
+import { currentUserId } from "@/lib/auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { AppError, errorResponse } from "@/lib/errors";
 import { generateGermanRentalContract } from "@/lib/rag";
 import { QuotaExhaustedError } from "@/lib/rag/gemini";
+import { getTemplate } from "@/lib/contract-templates";
+import { renderTemplate } from "@/lib/templates/render";
 
 // The product is Germany-only: every contract is governed by German law. The
 // sole user-facing choice is the output language.
@@ -22,6 +25,9 @@ type GenerateBody = {
   baseRentEur?: number;
   operatingCostsEur?: number;
   depositEur?: number;
+  // Optional: generate from a saved template. `values` fills its {{placeholders}}.
+  templateId?: string;
+  values?: Record<string, string | number>;
 };
 
 function normaliseLanguage(v: unknown): Language {
@@ -39,7 +45,22 @@ function isGermanResidentialLease(b: GenerateBody): boolean {
 // unindexed store.
 const MIN_GROUNDING_SCORE = 0.35;
 
-async function draftGermanLease(b: GenerateBody) {
+/** Render a saved template's body against `values`, visibility-checked. Returns null when absent/invisible. */
+async function renderTemplateBody(b: GenerateBody, language: Language): Promise<string | null> {
+  if (!b.templateId) return null;
+  const userId = await currentUserId();
+  if (!userId) return null;
+  const tpl = await getTemplate(b.templateId, userId);
+  if (!tpl) return null;
+  const source = language === "en" && tpl.body_en ? tpl.body_en : tpl.body;
+  const { text } = renderTemplate(source, b.values ?? {}, {
+    variables: tpl.variables ?? [],
+    sections: (tpl.sections ?? []).map((s) => ({ key: s.key, enabled: true })),
+  });
+  return text.trim() || null;
+}
+
+async function draftGermanLease(b: GenerateBody, templateBody: string | null) {
   const baseRentEur = Number(b.baseRentEur);
   if (!b.propertyAddress?.trim() || !Number.isFinite(baseRentEur) || baseRentEur <= 0) {
     throw new AppError(
@@ -61,6 +82,7 @@ async function draftGermanLease(b: GenerateBody) {
       operatingCostsEur: num(b.operatingCostsEur),
       depositEur: num(b.depositEur),
       keyTerms: b.keyTerms?.trim() || undefined,
+      templateBody: templateBody ?? undefined,
       language: normaliseLanguage(b.language),
     },
     // Route generation through the app's LLM adapter so it shares the
@@ -86,9 +108,14 @@ export async function POST(req: NextRequest) {
     const { contractType, party1, party2, keyTerms } = body;
     const language = normaliseLanguage(body.language);
 
+    const templateBody = await renderTemplateBody(body, language);
+
     if (isGermanResidentialLease(body)) {
       try {
-        return NextResponse.json(await draftGermanLease(body));
+        return NextResponse.json({
+          ...(await draftGermanLease(body, templateBody)),
+          templateId: body.templateId ?? null,
+        });
       } catch (err) {
         if (err instanceof QuotaExhaustedError) {
           throw new AppError(
@@ -102,11 +129,18 @@ export async function POST(req: NextRequest) {
     }
 
     const langName = language === "en" ? "English" : "German (Deutsch)";
+    const structureBlock = templateBody
+      ? `You MUST follow this required contract structure and clause wording, adapting only where the client's requirements below demand it:
+--- REQUIRED STRUCTURE ---
+${templateBody}
+--- END REQUIRED STRUCTURE ---
+`
+      : "";
     const prompt = `This contract is governed by German law (BGB, and HGB where the parties are merchants). It must be written in ${langName}.
 
 You are a senior German commercial contracts attorney (Rechtsanwalt). Draft a complete, professional ${contractType} between ${party1} and ${party2} under German law.
 
-${keyTerms ? `Key requirements from the client:\n${keyTerms}\n` : ""}
+${structureBlock}${keyTerms ? `Key requirements from the client:\n${keyTerms}\n` : ""}
 
 Requirements:
 - Write the full contract with all standard sections for this contract type
@@ -124,7 +158,7 @@ Write the complete contract now:`;
 
     const text = await askLLM({ prompt, maxTokens: 8192 });
 
-    return NextResponse.json({ text });
+    return NextResponse.json({ text, templateId: body.templateId ?? null });
   } catch (err) {
     return errorResponse(err, "generate");
   }

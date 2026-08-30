@@ -16,6 +16,8 @@ const GATED_COMPUTE_PATHS = new Set([
   "/api/refine",
   "/api/chat",
   "/api/contract-edit",
+  "/api/clause-library/search", // embeds the query with Gemini
+  "/api/templates/suggest-variables", // askLLM to extract variables
 ]);
 
 /** `/api/contracts/<id>/reanalyse` — id is dynamic. */

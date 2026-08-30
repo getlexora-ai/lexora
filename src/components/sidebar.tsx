@@ -30,9 +30,9 @@ type NavItem = {
 
 const WORKSPACE_NAV: NavItem[] = [
   { label: "Contracts", icon: FileText, href: "/dashboard" },
-  { label: "Clause library", icon: BookOpen, href: "/clauses", soon: true },
-  { label: "Templates", icon: LayoutGrid, href: "/templates", soon: true },
-  { label: "Playbooks", icon: Shield, href: "/playbooks", soon: true },
+  { label: "Clause library", icon: BookOpen, href: "/clauses" },
+  { label: "Templates", icon: LayoutGrid, href: "/templates" },
+  { label: "Playbooks", icon: Shield, href: "/playbooks" },
 ];
 
 const INSIGHTS_NAV: NavItem[] = [
@@ -208,16 +208,20 @@ export function Sidebar({ contractCount }: { contractCount?: number }) {
               </span>
             </button>
             <div className="mx-0.5 my-1 h-px bg-border" />
-            <div
-              className="flex w-full cursor-not-allowed items-center gap-2.5 rounded-sm px-2 py-1.5 text-left text-[13px] text-text-3 select-none"
-              aria-disabled
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => go("generate=1&template=1")}
+              className="flex w-full items-start gap-2.5 rounded-sm px-2 py-1.5 text-left text-[13px] hover:bg-surface-2"
             >
-              <BookOpen className="size-4 shrink-0" aria-hidden />
-              New from template
-              <span className="ml-auto rounded-sm border border-border px-1.5 font-mono text-[9px] tracking-[0.06em] uppercase">
-                Soon
+              <BookOpen className="mt-0.5 size-4 shrink-0" aria-hidden />
+              <span>
+                New from template
+                <span className="block text-[11px] text-text-3">
+                  Start from a saved contract skeleton
+                </span>
               </span>
-            </div>
+            </button>
           </div>
         )}
       </div>

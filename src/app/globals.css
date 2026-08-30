@@ -778,13 +778,40 @@
 }
 
 .quill-host .ql-toolbar.ql-snow {
+  position: sticky;
+  top: 0;
+  z-index: 5;
   flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 4px;
   border: none;
   border-bottom: 1px solid var(--border);
-  background: var(--surface-2);
-  padding: 0.5rem 1rem;
+  background: color-mix(in oklab, var(--surface-2) 88%, transparent);
+  backdrop-filter: blur(8px);
+  padding: 0.4rem 0.9rem;
   font-family: var(--font-sans);
 }
+
+/* Each `[...]` group in QUILL_TOOLBAR becomes a <span class="ql-formats">.
+   Give the groups air and a hairline divider so the maxed-out toolbar still
+   parses at a glance. */
+.quill-host .ql-toolbar.ql-snow .ql-formats {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  margin: 0 7px 0 0;
+  padding-right: 7px;
+  border-right: 1px solid var(--border-strong);
+}
+.quill-host .ql-toolbar.ql-snow .ql-formats:last-child {
+  border-right: none;
+  margin-right: 0;
+  padding-right: 0;
+}
+/* Picker labels sit a touch low against the icon buttons by default. */
+.quill-host .ql-toolbar.ql-snow .ql-picker-label { display: inline-flex; align-items: center; }
 
 /* Quill ships hard-coded #444/#06c greys. Re-point them at the ink ramp so the
    toolbar belongs to the same system as the rest of the chrome.             */
@@ -886,6 +913,74 @@
   left: clamp(22px, 5vw, 56px);
   right: clamp(22px, 5vw, 56px);
 }
+
+/* ── Curated typographic controls (issue #10) ──────────────────────────────
+   Toolbar values are registered in review/page.tsx; this is their rendering:
+   the browser font stacks, the human-readable picker labels, and styling for
+   the block formats (blockquote / code / sub-sup) the toolbar now exposes.   */
+
+/* Font family — class attributor. Default (no class) stays --font-sans. */
+.quill-host .ql-editor .ql-font-serif { font-family: Georgia, "Times New Roman", "Liberation Serif", serif; }
+.quill-host .ql-editor .ql-font-mono  { font-family: var(--font-mono), ui-monospace, "SFMono-Regular", Menlo, monospace; }
+
+/* Picker labels. Quill snow only writes friendly labels for its own built-in
+   whitelists, so the curated values need their own `content`.                */
+.quill-host .ql-snow .ql-picker.ql-font { width: 76px; }
+.quill-host .ql-snow .ql-picker.ql-font .ql-picker-label::before,
+.quill-host .ql-snow .ql-picker.ql-font .ql-picker-item::before { content: "Sans"; }
+.quill-host .ql-snow .ql-picker.ql-font .ql-picker-label[data-value="serif"]::before,
+.quill-host .ql-snow .ql-picker.ql-font .ql-picker-item[data-value="serif"]::before { content: "Serif"; font-family: Georgia, serif; }
+.quill-host .ql-snow .ql-picker.ql-font .ql-picker-label[data-value="mono"]::before,
+.quill-host .ql-snow .ql-picker.ql-font .ql-picker-item[data-value="mono"]::before { content: "Mono"; font-family: var(--font-mono), monospace; }
+
+.quill-host .ql-snow .ql-picker.ql-size { width: 62px; }
+.quill-host .ql-snow .ql-picker.ql-size .ql-picker-label::before { content: "Size"; }
+.quill-host .ql-snow .ql-picker.ql-size .ql-picker-item::before { content: "Default"; }
+.quill-host .ql-snow .ql-picker.ql-size .ql-picker-label[data-value]::before,
+.quill-host .ql-snow .ql-picker.ql-size .ql-picker-item[data-value]::before { content: attr(data-value); }
+
+/* Line-height — custom `lineheight` format; render as an icon-free text picker. */
+.quill-host .ql-snow .ql-picker.ql-lineheight { width: 82px; }
+.quill-host .ql-snow .ql-picker.ql-lineheight .ql-picker-label::before { content: "Spacing"; }
+.quill-host .ql-snow .ql-picker.ql-lineheight .ql-picker-item::before { content: "Default"; }
+.quill-host .ql-snow .ql-picker.ql-lineheight .ql-picker-label[data-value]::before,
+.quill-host .ql-snow .ql-picker.ql-lineheight .ql-picker-item[data-value]::before { content: "↕ " attr(data-value); }
+
+/* Block formats newly reachable from the toolbar. */
+.quill-host .ql-editor blockquote {
+  margin: 1em 0;
+  padding: 0.2em 0 0.2em 1em;
+  border-left: 3px solid var(--border-strong);
+  color: var(--text-3);
+  font-style: italic;
+}
+.quill-host .ql-editor pre,
+.quill-host .ql-editor .ql-code-block-container {
+  margin: 1em 0;
+  padding: 0.75em 1em;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: var(--surface-2);
+  color: var(--text); /* override Quill snow's near-white #f8f8f2 */
+  font-family: var(--font-mono), ui-monospace, Menlo, monospace;
+  font-size: 0.92em;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+.quill-host .ql-editor .ql-code-block { color: inherit; }
+.quill-host .ql-editor sub,
+.quill-host .ql-editor sup { font-size: 0.72em; line-height: 0; }
+
+.quill-host .ql-editor a {
+  color: var(--brand);
+  text-underline-offset: 2px;
+}
+.quill-host .ql-editor ::selection { background: color-mix(in oklab, var(--brand) 24%, transparent); }
+
+/* The colour pickers benefit from a slightly roomier swatch grid. */
+.quill-host .ql-snow .ql-color-picker .ql-picker-options,
+.quill-host .ql-snow .ql-background .ql-picker-options { width: 168px; padding: 5px; }
+.quill-host .ql-snow .ql-color-picker .ql-picker-item { border-radius: 3px; }
 
 /* ── End Quill ──────────────────────────────────────────────────────────── */
 

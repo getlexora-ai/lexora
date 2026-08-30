@@ -86,3 +86,83 @@ test("deltaToMarkdown: bold marker excludes trailing space so marked can parse i
   };
   assert.equal(deltaToMarkdown(delta), "**The** **Landlord** agrees.");
 });
+
+/* ── Curated typographic controls (issue #10) ─────────────────────────────── */
+
+test("deltaToLines: captures font / size / colour / script on runs", () => {
+  const delta = {
+    ops: [
+      { insert: "Big red", attributes: { size: "24px", color: "#e60000", font: "serif" } },
+      { insert: " and " },
+      { insert: "n", attributes: {} },
+      { insert: "2", attributes: { script: "super" } },
+      { insert: " highlighted", attributes: { background: "#ffff00", strike: true } },
+      { insert: "\n" },
+    ],
+  };
+  const [line] = deltaToLines(delta);
+  assert.equal(line.runs[0].size, "24px");
+  assert.equal(line.runs[0].color, "#e60000");
+  assert.equal(line.runs[0].font, "serif");
+  assert.equal(line.runs[3].script, "super");
+  assert.equal(line.runs[4].background, "#ffff00");
+  assert.equal(line.runs[4].strike, true);
+});
+
+test("deltaToLines: captures align / indent / line-height / blockquote / code block on lines", () => {
+  const delta = {
+    ops: [
+      { insert: "centered" },
+      { insert: "\n", attributes: { align: "center", lineheight: "1.5" } },
+      { insert: "indented twice" },
+      { insert: "\n", attributes: { indent: 2 } },
+      { insert: "a quote" },
+      { insert: "\n", attributes: { blockquote: true } },
+      { insert: "const x = 1;" },
+      { insert: "\n", attributes: { "code-block": true } },
+    ],
+  };
+  const lines = deltaToLines(delta);
+  assert.equal(lines[0].align, "center");
+  assert.equal(lines[0].lineHeight, "1.5");
+  assert.equal(lines[1].indent, 2);
+  assert.equal(lines[2].blockquote, true);
+  assert.equal(lines[3].codeBlock, true);
+});
+
+test("deltaToLines: ignores align:left and indent:0 (Quill's defaults)", () => {
+  const delta = {
+    ops: [
+      { insert: "plain" },
+      { insert: "\n", attributes: { align: "left", indent: 0 } },
+    ],
+  };
+  const [line] = deltaToLines(delta);
+  assert.equal(line.align, undefined);
+  assert.equal(line.indent, undefined);
+});
+
+test("deltaToMarkdown: strike → ~~…~~, blockquote → >, code block → indent", () => {
+  const delta = {
+    ops: [
+      { insert: "keep " },
+      { insert: "this", attributes: { strike: true } },
+      { insert: "\n" },
+      { insert: "quoted line" },
+      { insert: "\n", attributes: { blockquote: true } },
+      { insert: "code line" },
+      { insert: "\n", attributes: { "code-block": true } },
+    ],
+  };
+  assert.equal(deltaToMarkdown(delta), "keep ~~this~~\n> quoted line\n    code line");
+});
+
+test("deltaToMarkdown: font / size / colour do not appear (Markdown can't carry them)", () => {
+  const delta = {
+    ops: [
+      { insert: "styled", attributes: { size: "32px", color: "#123456", font: "mono" } },
+      { insert: "\n", attributes: { align: "right", lineheight: "2" } },
+    ],
+  };
+  assert.equal(deltaToMarkdown(delta), "styled");
+});

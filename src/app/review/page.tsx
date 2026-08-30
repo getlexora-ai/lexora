@@ -66,13 +66,68 @@ const RAIL = [
 
 const NAV_TABS = ["Review", "Playbook", "Compare", "History", "Approval"];
 
+/* ── Editor typography ─────────────────────────────────────────────────────
+   A curated set, not open whitelists: every value here has to render in the
+   editor AND survive .docx / .pdf export (src/lib/export-contract.ts) and the
+   AI-edit Markdown round-trip (src/lib/delta-text.ts). Arbitrary fonts / sizes
+   break export fidelity and legal-doc consistency, so we don't offer them. */
+
+// px values, stored verbatim on the delta (style attributor) → export reads them directly.
+const FONT_SIZES  = ["12px", "14px", "16px", "18px", "24px", "32px"];
+// Leading `false` is the "reset to the sheet default" option in the dropdown;
+// it is NOT part of the attributor whitelist.
+const SIZE_OPTIONS: (string | false)[] = [false, ...FONT_SIZES];
+// Multipliers applied as `line-height` on the block; `false` is the "single
+// spacing / unset" option and is not part of the attributor whitelist.
+const LINE_HEIGHTS = ["1", "1.15", "1.5", "2"];
+const LINE_HEIGHT_OPTIONS: (string | false)[] = [false, ...LINE_HEIGHTS];
+// Class attributor values; the browser font stack lives in globals.css
+// (.ql-font-serif / .ql-font-mono), the export mapping in export-contract.ts.
+const FONT_FAMILIES = ["serif", "mono"];
+// `false` = the default sans face (no class).
+const FONT_OPTIONS: (string | false)[] = [false, "serif", "mono"];
+
 const QUILL_TOOLBAR = [
-  ["bold", "italic", "underline", "strike"],
+  [{ font: FONT_OPTIONS }, { size: SIZE_OPTIONS }],
   [{ header: [1, 2, 3, false] }],
-  [{ list: "ordered" }, { list: "bullet" }],
-  ["link"],
-  ["clean"],
+  ["bold", "italic", "underline", "strike"],
+  [{ color: [] }, { background: [] }],
+  [{ script: "super" }, { script: "sub" }],
+  [{ align: [] }, { lineheight: LINE_HEIGHT_OPTIONS }],
+  [{ list: "ordered" }, { list: "bullet" }, { indent: "-1" }, { indent: "+1" }],
+  ["blockquote", "code-block"],
+  ["link", "clean"],
 ];
+
+/* Register the curated formats on the Quill class exactly once. Uses the
+   *style* attributors for size / align / line-height so the delta carries the
+   literal CSS value (`{ size: "18px" }`) — no size-class CSS to keep in sync,
+   and export/round-trip code can read the value straight off the op. Font stays
+   a *class* attributor (`ql-font-serif`) so the picker shows real names. */
+let quillFormatsRegistered = false;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function registerQuillFormats(Quill: any) {
+  if (quillFormatsRegistered) return;
+  quillFormatsRegistered = true;
+
+  const SizeStyle = Quill.import("attributors/style/size");
+  SizeStyle.whitelist = FONT_SIZES;
+  Quill.register(SizeStyle, true);
+
+  const AlignStyle = Quill.import("attributors/style/align");
+  Quill.register(AlignStyle, true);
+
+  const FontClass = Quill.import("attributors/class/font");
+  FontClass.whitelist = FONT_FAMILIES;
+  Quill.register(FontClass, true);
+
+  const Parchment = Quill.import("parchment");
+  const LineHeightStyle = new Parchment.StyleAttributor("lineheight", "line-height", {
+    scope: Parchment.Scope.BLOCK,
+    whitelist: LINE_HEIGHTS,
+  });
+  Quill.register({ "formats/lineheight": LineHeightStyle }, true);
+}
 
 function normalise(s: string) {
   return s.replace(/\s+/g, " ").trim().toLowerCase();
@@ -335,11 +390,22 @@ function ReviewContent() {
       // creating a second toolbar while the first promise resolves late.
       if (cancelled || !containerRef.current) return;
 
+      registerQuillFormats(Quill);
+
       const quill = new Quill(containerRef.current, {
         theme: "snow",
         modules: { toolbar: QUILL_TOOLBAR },
         placeholder: "Extracted contract text will appear here…",
       });
+
+      // With an array toolbar config Quill inserts the toolbar as a *sibling*
+      // of the host element; move it inside so the `.quill-host .ql-toolbar`
+      // rules in globals.css apply and it sits above the sheet as one surface.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const toolbarEl = (quill.getModule("toolbar") as any)?.container as HTMLElement | undefined;
+      if (toolbarEl && containerRef.current && toolbarEl.parentElement !== containerRef.current) {
+        containerRef.current.insertBefore(toolbarEl, containerRef.current.firstChild);
+      }
 
       // Prefer DB content (arrived before Quill was ready) → then the in-memory
       // hand-off from a just-finished analysis.
@@ -1270,6 +1336,29 @@ function ReviewContent() {
                 >
                   {!selectionRefineOpen ? (
                     <div className="flex items-center gap-0.5 rounded-md border border-border-strong bg-surface p-[3px] shadow-e3">
+                      {/* Quick inline formatting — the full set lives in the toolbar
+                          above the document; these are the reach-for-it-often ones. */}
+                      {([
+                        ["bold", "B", "font-bold"],
+                        ["italic", "I", "italic"],
+                        ["underline", "U", "underline"],
+                        ["strike", "S", "line-through"],
+                      ] as const).map(([fmt, glyph, deco]) => (
+                        <button
+                          key={fmt}
+                          title={fmt[0].toUpperCase() + fmt.slice(1)}
+                          className={cn("inline-flex size-7 items-center justify-center rounded-sm text-xs transition-colors hover:bg-surface-2", deco)}
+                          onClick={() => {
+                            const quill = quillRef.current;
+                            if (!quill) return;
+                            const cur = quill.getFormat();
+                            quill.format(fmt, !cur[fmt], "user");
+                          }}
+                        >
+                          {glyph}
+                        </button>
+                      ))}
+                      <span className="h-4 w-px bg-border" aria-hidden />
                       <button
                         className="inline-flex items-center gap-1.5 rounded-sm px-2 py-1.5 text-xs font-medium transition-colors hover:bg-surface-2"
                         onClick={() => {

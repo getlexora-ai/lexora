@@ -804,50 +804,36 @@ function ReviewContent() {
     setChatLoading(true);
     saveChatMessage("user", q);
     try {
-      let answer = "";
+      // One endpoint for both jobs: it answers questions and, when the message
+      // is an instruction to change the contract, returns the rewritten
+      // document (`updatedDocument`) which we apply straight to the editor.
+      const res = await fetch("/api/contract-edit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          instruction: q,
+          currentDocument: liveMarkdown(),
+          history: chatHistory,
+        }),
+      });
+      const data = await res.json();
+      const answer = rateLimitNote(res, data)
+        ?? (res.ok ? (data.answer ?? "Done.")
+                   : (data.message ?? "The assistant hit an error. Please try again."));
 
-      if (isCreateMode) {
-        // In create mode: AI edits the document directly and explains what changed
-        const res = await fetch("/api/contract-edit", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            instruction: q,
-            currentDocument: liveMarkdown(),
-            history: chatHistory,
-          }),
-        });
-        const data = await res.json();
-        answer = rateLimitNote(res, data)
-          ?? (res.ok ? (data.explanation ?? "Contract updated.")
-                     : (data.message ?? "The assistant hit an error. Please try again."));
-        if (data.updatedDocument && quillRef.current) {
-          applyDocMarkdown(quillRef.current, data.updatedDocument);
-          quillRef.current.history.clear();
-          // Persist the AI's whole-document rewrite, and snapshot it for the audit trail.
-          if (contractId) {
-            fetch(`/api/contracts/${contractId}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ quill_delta: quillRef.current.getContents() }),
-            }).catch(() => {});
-            void snapshotVersion(`AI edit: ${q.slice(0, 80)}`);
-          }
+      if (res.ok && data.updatedDocument && quillRef.current) {
+        // Snapshot the pre-edit document first so a bad rewrite is one click to
+        // undo from History, then apply and persist the new version.
+        if (contractId) await snapshotVersion(`Before AI edit: ${q.slice(0, 72)}`);
+        applyDocMarkdown(quillRef.current, data.updatedDocument);
+        quillRef.current.history.clear();
+        if (contractId) {
+          fetch(`/api/contracts/${contractId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ quill_delta: quillRef.current.getContents() }),
+          }).catch(() => {});
         }
-      } else {
-        const res = await fetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            question: q,
-            contractText: liveText(),
-            history: chatHistory,
-          }),
-        });
-        const data = await res.json();
-        answer = rateLimitNote(res, data)
-          ?? (res.ok ? (data.answer ?? "No response.")
-                     : (data.message ?? "The assistant hit an error. Please try again."));
       }
 
       setChatHistory(prev => [...prev, { role: "assistant", content: answer }]);

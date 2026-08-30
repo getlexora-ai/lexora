@@ -29,7 +29,8 @@ export const LIMITS: Record<ComputeRoute | "compute", Pair> = {
   analyse:         { hour: 20,  day: 60  },
   generate:        { hour: 15,  day: 40  },
   refine:          { hour: 40,  day: 150 },
-  "contract-edit": { hour: 40,  day: 150 },
+  // the review "Ask AI" panel — both questions and whole-document edits
+  "contract-edit": { hour: 60,  day: 200 },
   chat:            { hour: 60,  day: 200 },
   // the user cap stops a runaway re-analyse loop
   reanalyse:       { hour: 20,  day: 60  },

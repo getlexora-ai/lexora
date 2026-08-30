@@ -63,7 +63,7 @@ export function SaveAsTemplateDialog({
 
   useEffect(() => {
     if (!open) return;
-    setName(defaultName ? `${defaultName} — template` : "");
+    setName(defaultName ? `${defaultName} template` : "");
     setRows(suggestFromText(contractText));
     setError(null);
   }, [open, contractText, defaultName]);
@@ -96,7 +96,7 @@ export function SaveAsTemplateDialog({
       });
       const data = await res.json();
       if (res.status === 429) {
-        setError("AI suggestion limit reached — add the placeholders manually or try again later.");
+        setError("AI suggestion limit reached. Add the placeholders manually, or try again later.");
         return;
       }
       if (!res.ok) {
@@ -163,7 +163,7 @@ export function SaveAsTemplateDialog({
 
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Template name</label>
-            <input className={INPUT} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Standard NDA — outbound" />
+            <input className={INPUT} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Standard NDA (outbound)" />
             {contractType && <p className="text-[11px] text-text-3">Contract type: {contractType}</p>}
           </div>
 

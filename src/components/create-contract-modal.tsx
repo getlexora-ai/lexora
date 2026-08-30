@@ -175,7 +175,7 @@ export function CreateContractModal({
       ? "Use template"
       : mode === "template"
         ? "Generate with AI"
-        : "Generate Contract";
+        : "Generate contract";
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v && !generating) onClose(); }}>
@@ -183,12 +183,12 @@ export function CreateContractModal({
         <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-brand" />
-            {mode === "template" ? "New contract from template" : "Generate Contract with AI"}
+            {mode === "template" ? "New contract from template" : "Generate a contract with AI"}
           </DialogTitle>
           <DialogDescription>
             {mode === "template"
               ? "Fill the template's fields. Leave “Key terms” empty to use it as-is, or add requirements to draft with AI."
-              : "Provide the details below and Claude will draft a complete contract for you to review and refine."}
+              : "Add the details below and Claude drafts a full contract for you to review and refine."}
           </DialogDescription>
         </DialogHeader>
 
@@ -227,17 +227,17 @@ export function CreateContractModal({
                 </SelectContent>
               </Select>
               {templates.length === 0 && (
-                <p className="text-xs text-muted-foreground">No templates yet — create one under Templates.</p>
+                <p className="text-xs text-muted-foreground">No templates yet. Create one under Templates.</p>
               )}
             </div>
           )}
 
           {/* Contract name */}
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Contract Name</label>
+            <label className="text-sm font-medium">Contract name</label>
             <input
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-              placeholder="e.g. NDA — Acme Corp"
+              placeholder="e.g. NDA for Acme Corp"
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
@@ -245,7 +245,7 @@ export function CreateContractModal({
 
           {/* Contract type — locked to the template when one is chosen */}
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Contract Type</label>
+            <label className="text-sm font-medium">Contract type</label>
             <Select
               value={effectiveContractType}
               onValueChange={(v) => setContractType(v ?? "")}
@@ -346,7 +346,7 @@ export function CreateContractModal({
                 <input
                   type="number" min="0" inputMode="decimal"
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                  placeholder="Kaution — blank = statutory max (3× cold rent, § 551 BGB)"
+                  placeholder="Kaution. Blank = statutory max (3× cold rent, § 551 BGB)"
                   value={depositEur}
                   onChange={(e) => setDepositEur(e.target.value)}
                 />
@@ -371,7 +371,7 @@ export function CreateContractModal({
           {/* Key terms */}
           <div className="space-y-1.5">
             <label className="text-sm font-medium">
-              Key Terms & Requirements <span className="text-muted-foreground font-normal">(optional)</span>
+              Key terms and requirements <span className="text-muted-foreground font-normal">(optional)</span>
             </label>
             <textarea
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none"

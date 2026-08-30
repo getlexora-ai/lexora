@@ -21,9 +21,9 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Lexora — Contract intelligence",
+  title: "Lexora · Contract review",
   description:
-    "Lexora flags the clauses worth a closer look and drafts suggested wording — for your own review, before you sign.",
+    "Lexora flags the clauses worth a closer look and drafts suggested wording for your own review, before you sign.",
 };
 
 /* The Clerk widget inherits the palette through @clerk/ui/themes/shadcn.css,

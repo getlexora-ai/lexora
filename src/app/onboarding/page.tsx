@@ -335,7 +335,7 @@ export default function OnboardingPage() {
                   Drop a PDF or DOCX
                 </span>
                 <span className="font-mono text-[10px] tracking-[0.06em] text-text-3 uppercase">
-                  or browse — 20 MB max
+                  or browse, 20 MB max
                 </span>
               </div>
 
@@ -387,8 +387,8 @@ export default function OnboardingPage() {
                 You&apos;re all set
               </h2>
               <p className="mt-1.5 text-[13px] text-text-2">
-                Here&apos;s what we&apos;ve configured — you can change any of it
-                in Settings.
+                Here&apos;s what we&apos;ve set up. You can change any of it in
+                Settings.
               </p>
             </div>
 

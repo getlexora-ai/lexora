@@ -15,7 +15,7 @@ export default function SignUpPage() {
       <AuthSplit>
         <AuthFormColumn
           title="Create your account"
-          lede="Start a 14-day trial — no card required. Analyse contracts, see suggested wording, keep the trail."
+          lede="Start a 14-day trial. No card required. Analyse contracts, see suggested wording, keep the trail."
         >
           <SignUp appearance={CLERK_FLUSH_APPEARANCE} />
           <RdgMicro variant="signup" />
@@ -24,12 +24,12 @@ export default function SignUpPage() {
         <AuthBrandPanel
           quote={
             <>
-              Every contract, read line by line —{" "}
-              <span className="hl hl-low">flagged, with suggested wording</span>{" "}
-              — the moment you upload it.
+              Every contract, read line by line and{" "}
+              <span className="hl hl-low">flagged, with suggested wording</span>,
+              the moment you upload it.
             </>
           }
-          by="— what the tool does on day one"
+          by="What the tool does on day one"
           stats={[
             { n: "3", k: "steps to set up" },
             { n: "~90s", k: "to first analysis" },

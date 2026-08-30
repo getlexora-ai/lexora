@@ -13,7 +13,7 @@ const VERDICT_META: Record<
   { label: string; pill: string }
 > = {
   meets: { label: "Covered", pill: "pill-low" },
-  fallback: { label: "Covered — fallback", pill: "pill-med" },
+  fallback: { label: "Covered (fallback)", pill: "pill-med" },
   redline: { label: "Redline by your playbook", pill: "pill-high" },
   missing: { label: "Not addressed", pill: "pill-none" },
 };

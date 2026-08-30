@@ -15,7 +15,7 @@ export default function SignInPage() {
       <AuthSplit>
         <AuthFormColumn
           title="Sign in to Lexora"
-          lede="Pick up where you left off — your contracts and review history are waiting."
+          lede="Pick up where you left off. Your contracts and review history are waiting."
         >
           <SignIn appearance={CLERK_FLUSH_APPEARANCE} />
 
@@ -33,7 +33,7 @@ export default function SignInPage() {
               that three of us had read straight past.”
             </>
           }
-          by="— Head of Legal, Series B SaaS"
+          by="Head of Legal, Series B SaaS"
           snippet={
             <>
               <span className="font-mono text-[10px] text-text-3">

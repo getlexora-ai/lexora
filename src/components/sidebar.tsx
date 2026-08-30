@@ -189,7 +189,7 @@ export function Sidebar({ contractCount }: { contractCount?: number }) {
               <span>
                 Upload contract
                 <span className="block text-[11px] text-text-3">
-                  PDF or DOCX — analysed on upload
+                  PDF or DOCX, analysed on upload
                 </span>
               </span>
             </button>

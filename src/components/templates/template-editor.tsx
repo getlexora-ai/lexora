@@ -176,7 +176,7 @@ export function TemplateEditor({ open, onClose, template, onSaved }: Props) {
 
           {template?.sections && template.sections.length > 0 && (
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Sections <span className="font-normal text-muted-foreground">(structured index — read-only)</span></label>
+              <label className="text-sm font-medium">Sections <span className="font-normal text-muted-foreground">(structured index, read-only)</span></label>
               <ul className="rounded-lg border border-border divide-y divide-border text-[12.5px]">
                 {template.sections.map((s, i) => (
                   <li key={i} className="flex items-center gap-2 px-3 py-1.5">
@@ -232,7 +232,7 @@ export function TemplateEditor({ open, onClose, template, onSaved }: Props) {
             {variables.some((v) => v.type === "derived") && (
               <p className="text-[11px] text-text-3">
                 Set a derived variable&apos;s formula in <code className="font-mono">expr</code> (e.g.{" "}
-                <code className="font-mono">baseRentEur + operatingCostsEur</code>) — only + - * / and other variable names.
+                <code className="font-mono">baseRentEur + operatingCostsEur</code>). Only + - * / and other variable names are allowed.
               </p>
             )}
             {variables.map((v, i) =>

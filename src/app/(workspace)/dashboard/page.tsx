@@ -51,7 +51,7 @@ type Contract  = {
 };
 
 const docsConfig  = { docs:   { label: "Documents", color: DOCS_COLOR  } };
-const fixesConfig = { fixes:  { label: "AI Fixes",  color: FIXES_COLOR } };
+const fixesConfig = { fixes:  { label: "Suggestions applied",  color: FIXES_COLOR } };
 const riskConfig  = {
   high:   { label: "High Risk",   color: HIGH_COLOR   },
   medium: { label: "Medium Risk", color: MEDIUM_COLOR },
@@ -186,7 +186,7 @@ function ChartCard({
 }
 
 const DUMMY_CONTRACT = {
-  name: "Master Service Agreement — Test Corp",
+  name: "Master Service Agreement (Test Corp)",
   contract_type: "MSA",
   extracted_text: "This is a test contract. Provider's liability shall be limited to one dollar ($1). All intellectual property created belongs exclusively to Provider in perpetuity.",
   risk_level: "high" as const,
@@ -242,7 +242,7 @@ function DashboardContent() {
       if (res.status === 401) {
         setSeedError("Sign in to save contracts.");
       } else if (!res.ok) {
-        setSeedError(`${res.status} — ${json.error ?? JSON.stringify(json)}`);
+        setSeedError(`${res.status}: ${json.error ?? JSON.stringify(json)}`);
       } else {
         await loadContracts();
       }
@@ -533,7 +533,7 @@ function DashboardContent() {
 
       {/* Portfolio risk — full width */}
       <ChartCard
-        title="Portfolio risk — last 6 months"
+        title="Portfolio risk, last 6 months"
         legend={
           <div className="flex gap-3.5 text-[11px] text-text-2">
             {[
@@ -612,7 +612,7 @@ function DashboardContent() {
                 <TableRow>
                   <TableCell colSpan={7} className="py-10 text-center text-[13px] text-text-3">
                     {contracts.length === 0
-                      ? "No contracts yet — upload one or hit “Seed test data” to try it out."
+                      ? "No contracts yet. Upload one, or hit “Seed test data” to try it out."
                       : `Nothing in “${filter}”.`}
                   </TableCell>
                 </TableRow>

@@ -192,7 +192,7 @@ function ReviewContent() {
         body: JSON.stringify({ refined_suggestion: picked.content }),
       }).catch(err => console.error("[insertFromLibrary] clause patch failed:", err));
     }
-    setComputeError(`Inserted "${picked.title}" — review it, then Apply fix.`);
+    setComputeError(`Inserted "${picked.title}". Review it, then Apply fix.`);
   }
 
   /** Bank a card's current suggested wording to the personal clause library. */
@@ -224,7 +224,7 @@ function ReviewContent() {
   function rateLimitNote(res: Response, data: { retry_after?: number; scope?: string }): string | null {
     if (res.status !== 429) return null;
     const mins = Math.max(1, Math.round((Number(data.retry_after) || 3600) / 60));
-    const msg = `Usage limit reached${data.scope === "guest" ? " — sign in for higher limits" : ""}. Try again in about ${mins} min.`;
+    const msg = `Usage limit reached${data.scope === "guest" ? " (sign in for higher limits)" : ""}. Try again in about ${mins} min.`;
     setComputeError(msg);
     return msg;
   }
@@ -1077,7 +1077,7 @@ function ReviewContent() {
               <div>
                 <h3 className="text-[15px] font-semibold">Version history</h3>
                 <p className="text-[13px] text-text-2">
-                  Every applied fix, AI edit and manual save is snapshotted. Restore any point.
+                  Every applied fix, AI edit, and manual save is kept as a version you can restore.
                 </p>
               </div>
               <Button variant="outline" size="sm" onClick={() => void loadVersions()} disabled={versionsLoading}>
@@ -1131,8 +1131,8 @@ function ReviewContent() {
               <h3 className="text-[15px] font-semibold">Playbook coverage</h3>
               <p className="text-[13px] text-text-2">
                 How this contract measures up against a set of review positions.
-                {" "}A playbook whose badge reads “Unreviewed” has not been checked by a lawyer —
-                “redline by your playbook” is not the same as “void as a matter of law”.
+                {" "}A playbook whose badge reads “Unreviewed” has not been checked by a lawyer.
+                “Redline by your playbook” is not the same as “void as a matter of law”.
               </p>
             </div>
             {!contractId ? (
@@ -1158,7 +1158,7 @@ function ReviewContent() {
               <Sparkles className="size-5 text-text-3" />
             </div>
             <div className="space-y-1.5">
-              <h3 className="text-[15px] font-semibold">{activeTab} — coming soon</h3>
+              <h3 className="text-[15px] font-semibold">{activeTab} (coming soon)</h3>
               <p className="max-w-xs text-[13px] text-text-2">
                 This part of the workspace is on the roadmap.
               </p>
@@ -1187,7 +1187,7 @@ function ReviewContent() {
               ) : (
                 <span
                   key={label}
-                  aria-label={`${label} — coming soon`}
+                  aria-label={`${label} (coming soon)`}
                   aria-disabled
                   className={cn(classes, "cursor-not-allowed opacity-60")}
                 >
@@ -1197,7 +1197,7 @@ function ReviewContent() {
             })}
             <span className="flex-1" />
             <span
-              aria-label="Settings — coming soon"
+              aria-label="Settings (coming soon)"
               aria-disabled
               className="grid size-8.5 cursor-not-allowed place-items-center rounded-md text-text-3 opacity-60"
             >
@@ -1211,7 +1211,7 @@ function ReviewContent() {
               <div className="flex shrink-0 items-center gap-2 border-b border-border bg-risk-medium-soft px-4 py-1.5">
                 <span className="size-1.5 shrink-0 rounded-full bg-risk-medium" aria-hidden />
                 <span className="text-[11.5px] text-text-2">
-                  Clause highlighted in the document — hit{" "}
+                  Clause highlighted in the document. Hit{" "}
                   <b className="font-semibold text-foreground">Apply fix</b>{" "}
                   on the card to swap in the suggested wording.
                 </span>
@@ -1243,7 +1243,7 @@ function ReviewContent() {
                         className="inline-flex items-center gap-1.5 rounded-sm px-2 py-1.5 text-xs font-medium transition-colors hover:bg-surface-2"
                         onClick={() => {
                           setSidePanel("chat");
-                          setChatInput(`"${selectionToolbar.text.slice(0, 120)}${selectionToolbar.text.length > 120 ? "…" : ""}" — explain any legal risks in this passage.`);
+                          setChatInput(`Explain any legal risks in this passage: "${selectionToolbar.text.slice(0, 120)}${selectionToolbar.text.length > 120 ? "…" : ""}"`);
                           setSelectionToolbar(null);
                         }}
                       >
@@ -1364,13 +1364,13 @@ function ReviewContent() {
                     <p className="eyebrow">Add a missed issue</p>
                     <textarea
                       rows={2}
-                      placeholder="Passage — paste the exact text from the document"
+                      placeholder="Passage: paste the exact text from the document"
                       className="w-full resize-none rounded-md border border-border-strong bg-surface-2 px-2.5 py-2 text-xs shadow-e-inset focus-visible:outline-none"
                       value={addForm.passage}
                       onChange={e => setAddForm(f => ({ ...f, passage: e.target.value }))}
                     />
                     <input
-                      placeholder="Clause title — e.g. Clause 7: Indemnification"
+                      placeholder="Clause title, e.g. Clause 7: Indemnification"
                       className="w-full rounded-md border border-border-strong bg-surface-2 px-2.5 py-2 text-xs shadow-e-inset focus-visible:outline-none"
                       value={addForm.clause}
                       onChange={e => setAddForm(f => ({ ...f, clause: e.target.value }))}
@@ -1386,7 +1386,7 @@ function ReviewContent() {
                       <option value="low">Low risk</option>
                     </select>
                     <input
-                      placeholder="Issue — what is worth a closer look"
+                      placeholder="Issue: what's worth a closer look"
                       className="w-full rounded-md border border-border-strong bg-surface-2 px-2.5 py-2 text-xs shadow-e-inset focus-visible:outline-none"
                       value={addForm.issue}
                       onChange={e => setAddForm(f => ({ ...f, issue: e.target.value }))}
@@ -1501,7 +1501,7 @@ function ReviewContent() {
                         <div className="flex flex-col gap-2.5 border-t border-border p-2.5">
                           <div>
                             <div className="mb-1 flex items-center justify-between">
-                              <p className="eyebrow">Suggested wording — for your review</p>
+                              <p className="eyebrow">Suggested wording, for your review</p>
                               <div className="flex items-center gap-2.5">
                                 <button
                                   type="button"
@@ -1517,7 +1517,7 @@ function ReviewContent() {
                                   onClick={() => {
                                     navigator.clipboard?.writeText(card.suggestion).then(
                                       () => setComputeError("Suggested wording copied to the clipboard."),
-                                      () => setComputeError("Couldn't copy — select the text manually."),
+                                      () => setComputeError("Couldn't copy. Select the text manually."),
                                     );
                                   }}
                                 >
@@ -1598,7 +1598,7 @@ function ReviewContent() {
                                   className="flex-1"
                                   onClick={() => handleDismiss(card, dismissReason.trim())}
                                 >
-                                  Confirm — not an issue
+                                  Confirm: not an issue
                                 </Button>
                                 <Button
                                   size="sm"

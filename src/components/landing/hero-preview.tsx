@@ -86,7 +86,7 @@ export function HeroPreview() {
     >
       <div className="flex items-center gap-2 border-b border-border px-3 py-2.5 font-mono text-[10.5px] tracking-[0.05em] text-text-3 uppercase">
         <span className="size-[7px] shrink-0 rounded-full bg-risk-high" aria-hidden />
-        <span className="truncate">Reading — MSA_TestCorp.pdf</span>
+        <span className="truncate">Reading MSA_TestCorp.pdf</span>
         <span className="ml-auto shrink-0 text-text-2">6 issues</span>
       </div>
 

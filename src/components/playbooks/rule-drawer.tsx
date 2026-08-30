@@ -194,14 +194,14 @@ export function RuleDrawer({
               disabled={readOnly}
               onChange={(e) => set("is_required", e.target.checked)}
             />
-            Required — the contract is incomplete without this topic
+            Required: the contract is incomplete without this topic
           </label>
 
           {(["acceptable", "fallback", "unacceptable", "rationale"] as const).map((k) => (
             <label key={k} className="flex flex-col gap-1 text-[12px] font-medium capitalize">
               {k}
-              {k === "acceptable" && " — our default-OK position"}
-              {k === "unacceptable" && " — must be flagged (redline)"}
+              {k === "acceptable" && ": our default-OK position"}
+              {k === "unacceptable" && ": must be flagged (redline)"}
               <textarea
                 className={field}
                 rows={k === "rationale" ? 2 : 3}

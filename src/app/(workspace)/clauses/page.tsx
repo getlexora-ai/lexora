@@ -195,7 +195,7 @@ export default function ClausesPage() {
 
       {semantic && searchMode === "lexical" && queryTerm && (
         <p className="-mt-1 text-[12px] text-text-3">
-          Semantic index unavailable — showing a keyword match instead. Run{" "}
+          Semantic index unavailable. Showing a keyword match instead. Run{" "}
           <code className="font-mono text-[11px]">npm run seed:library -- --embed</code> to enable it.
         </p>
       )}

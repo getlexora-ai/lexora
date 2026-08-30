@@ -38,9 +38,9 @@ export type ClauseRow = {
 
 const POSTURES: ClauseRow["posture"][] = ["preferred", "fallback", "walk_away"];
 const POSTURE_LABEL: Record<ClauseRow["posture"], string> = {
-  preferred: "Preferred — our default ask",
-  fallback: "Fallback — acceptable compromise",
-  walk_away: "Walk-away — do not accept",
+  preferred: "Preferred: our default ask",
+  fallback: "Fallback: acceptable compromise",
+  walk_away: "Walk-away: do not accept",
 };
 
 const field =
@@ -219,13 +219,13 @@ export function ClauseDialog({ open, onClose, clause, onSaved, onDeleted }: Prop
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Clause text (German — authoritative)</label>
+            <label className="text-sm font-medium">Clause text (German, authoritative)</label>
             <textarea className={field + " min-h-[140px] resize-y font-[450] leading-relaxed"} value={content}
               disabled={readOnly} onChange={(e) => setContent(e.target.value)} />
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">English mirror <span className="font-normal text-muted-foreground">(optional — keep German citations verbatim)</span></label>
+            <label className="text-sm font-medium">English mirror <span className="font-normal text-muted-foreground">(optional; keep German citations verbatim)</span></label>
             <textarea className={field + " min-h-[90px] resize-y leading-relaxed"} value={contentEn}
               disabled={readOnly} onChange={(e) => setContentEn(e.target.value)} />
           </div>

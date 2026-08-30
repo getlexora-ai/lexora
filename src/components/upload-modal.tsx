@@ -81,10 +81,11 @@ export function UploadModal({ open, onClose, onAnalyze }: Props) {
       <DialogContent className="max-w-xl p-0 overflow-hidden">
         {/* Header */}
         <DialogHeader className="px-8 pt-8 pb-4">
-          <DialogTitle className="text-2xl font-semibold tracking-tight">Upload Agreement</DialogTitle>
+          <DialogTitle className="text-2xl font-semibold tracking-tight">Upload a contract</DialogTitle>
           <DialogDescription>
-            Our AI will scan for liabilities, governing law, and key dates. Analysis assumes
-            the contract is governed by German law (BGB, incl. AGB-Kontrolle §§ 305–310).
+            Lexora reads the document for liability, governing law, and key dates. Analysis
+            assumes the contract is governed by German law (BGB, including the AGB-Kontrolle
+            in §§ 305–310).
           </DialogDescription>
         </DialogHeader>
 
@@ -120,7 +121,7 @@ export function UploadModal({ open, onClose, onAnalyze }: Props) {
           {files.length > 0 && (
             <div>
               <p className="eyebrow mb-3">
-                Selected Files
+                Selected files
               </p>
               <div className="space-y-2">
                 {files.map(file => (
@@ -154,8 +155,8 @@ export function UploadModal({ open, onClose, onAnalyze }: Props) {
           {/* Contract Type */}
           <div className="space-y-2">
             <label className="eyebrow">
-              Contract Type
-              <span className="ml-1 text-brand normal-case tracking-normal">— helps AI improve accuracy</span>
+              Contract type
+              <span className="ml-1 text-brand normal-case tracking-normal">improves accuracy</span>
             </label>
             <Select value={contractType} onValueChange={(v) => setContractType(v ?? "")}>
               <SelectTrigger>
@@ -174,13 +175,14 @@ export function UploadModal({ open, onClose, onAnalyze }: Props) {
             </Select>
           </div>
 
-          {/* AI Enhancement Banner */}
+          {/* What happens next */}
           <div className="flex items-start gap-4 rounded-xl bg-brand-soft border border-brand-line px-4 py-3">
             <Sparkles className="h-5 w-5 text-brand shrink-0 mt-0.5" />
             <div>
-              <p className="text-sm font-semibold">AI Enhancement Active</p>
+              <p className="text-sm font-semibold">What happens next</p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Automated entity extraction and risk scoring will be applied to the document.
+                Lexora pulls out the parties and key dates, then flags the clauses worth a
+                closer look. Nothing is saved unless you sign in.
               </p>
             </div>
           </div>
@@ -198,7 +200,7 @@ export function UploadModal({ open, onClose, onAnalyze }: Props) {
               onClick={handleAnalyze}
             >
               <Sparkles className="h-4 w-4" />
-              Analyze with AI
+              Analyse contract
             </Button>
           </div>
         </div>

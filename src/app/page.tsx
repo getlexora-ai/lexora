@@ -23,12 +23,12 @@ const FEATURES = [
   {
     icon: ScanLine,
     title: "Instant analysis",
-    body: "Upload a PDF or DOCX and every clause is parsed and ranked by attention level in seconds — with a plain-language note on why.",
+    body: "Upload a PDF or DOCX and every clause is parsed and ranked by attention level in seconds, with a plain-language note on why.",
   },
   {
     icon: Sparkles,
     title: "Suggested wording",
-    body: "Each finding comes with alternative language in plain terms. Review it, edit it, apply it to the document as a redline — or leave it.",
+    body: "Each finding comes with alternative language in plain terms. Review it, edit it, apply it to the document as a redline, or leave it.",
   },
   {
     icon: History,
@@ -120,7 +120,7 @@ export default function LandingPage() {
                 <span className="rounded-full border border-risk-low-line bg-risk-low-soft px-[7px] py-0.5 font-mono text-[10px] tracking-[0.06em] text-risk-low uppercase">
                   Live
                 </span>
-                Analyse a real clause below — no signup
+                Analyse a real clause below. No signup.
               </span>
 
               <h1 className="text-[clamp(2.6rem,6.2vw,4.35rem)] font-bold leading-[1.08] tracking-[-0.035em] text-balance">
@@ -128,7 +128,7 @@ export default function LandingPage() {
                 <span className="bg-[linear-gradient(transparent_58%,color-mix(in_oklab,var(--high)_34%,transparent)_58%)]">
                   a closer look
                 </span>{" "}
-                — before you sign.
+                before you sign.
               </h1>
 
               <p className="mt-5 max-w-[44ch] text-[clamp(1rem,2vw,1.16rem)] leading-relaxed text-text-2">
@@ -175,7 +175,7 @@ export default function LandingPage() {
               <SectionHead
                 eyebrow="Play with it"
                 title="Paste a clause. Watch Lexora mark it up."
-                body="Pick one of the sample clauses or drop in your own. Hit analyse — language commonly negotiated is highlighted, and each finding comes with suggested wording you can adjust."
+                body="Pick one of the sample clauses or drop in your own. Hit analyse. Language that's commonly negotiated is highlighted, and each finding comes with suggested wording you can adjust."
               />
             </Reveal>
 
@@ -308,8 +308,7 @@ export default function LandingPage() {
 
             <p className="mt-4.5 flex max-w-[640px] gap-2.5 rounded-lg border border-border bg-surface px-3.5 py-3 text-xs leading-[1.55] text-text-3">
               Prices exclude VAT. Annual plans are billed yearly at the
-              discounted rate. All figures shown here are illustrative for this
-              design study.
+              discounted rate. The figures shown here are illustrative.
             </p>
           </div>
         </section>
@@ -322,7 +321,7 @@ export default function LandingPage() {
             </h2>
             <p className="mx-auto mt-4 mb-6.5 max-w-[46ch] text-text-2">
               Run the demo above, or upload a real document and see every flagged
-              clause — with suggested wording — for your own review.
+              clause, with suggested wording, for your own review.
             </p>
             <div className="flex flex-wrap justify-center gap-3">
               <a
@@ -349,7 +348,7 @@ export default function LandingPage() {
           <div>
             <BrandLockup />
             <p className="mt-3 max-w-[34ch] text-[13px] text-text-2">
-              AI-assisted contract analysis for people who sign things — a tool
+              AI-assisted contract analysis for people who sign things. A tool
               that supports your own review, from NDAs to MSAs.
             </p>
           </div>

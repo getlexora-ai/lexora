@@ -48,8 +48,8 @@ export function RdgNoticeBar({ className }: { className?: string }) {
         <b className="font-semibold text-foreground">
           Lexora flags clauses and drafts wording for your review.
         </b>{" "}
-        It is an informational tool — not legal advice within the meaning of the
-        German Legal Services Act (RDG) — and does not replace a lawyer.
+        It is an informational tool, not legal advice within the meaning of the
+        German Legal Services Act (RDG), and does not replace a lawyer.
         Automated output may be incomplete or wrong; verify before you rely on
         it.
       </span>
@@ -70,7 +70,7 @@ export function RdgStrip({ className }: { className?: string }) {
       <Info className="size-3.5 shrink-0" aria-hidden />
       <span>
         <b className="font-semibold text-text-2">
-          Informational tool — not legal advice.
+          Informational tool, not legal advice.
         </b>{" "}
         Flags and suggested wording are AI-generated for your own review; Lexora
         performs no legal assessment of your case (RDG) and does not replace a
@@ -142,7 +142,7 @@ export function RdgOnboardingNote({ className }: { className?: string }) {
         German Legal Services Act (RDG), performs no legal assessment of your
         individual case, and is not a substitute for a lawyer. Its analyses and
         suggested wording are generated automatically and may be incomplete or
-        wrong — review them yourself and, for legal advice, consult a licensed
+        wrong. Review them yourself and, for legal advice, consult a licensed
         lawyer (Rechtsanwältin/Rechtsanwalt).
       </span>
     </p>

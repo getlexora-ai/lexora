@@ -41,13 +41,13 @@ const INITIAL_STEPS: Step[] = [
     status: "pending",
   },
   {
-    label: "Analysing with AI",
-    description: "Evaluating liability, termination, IP rights, and risk markers.",
+    label: "Reviewing with AI",
+    description: "Checking liability, termination, IP rights, and other risk markers.",
     status: "pending",
   },
   {
-    label: "Cleaning and adding some magic",
-    description: "Synthesising findings into high, medium, and low risk categories.",
+    label: "Sorting the findings",
+    description: "Grouping each finding into high, medium, and low risk.",
     status: "pending",
   },
 ];
@@ -299,7 +299,7 @@ function AnalysisContent() {
             <h2 className="display text-3xl">Reading the contract…</h2>
             <p className="text-[15px] text-text-2">
               Lexora is extracting the clauses and marking the language that is
-              commonly negotiated — for your own review.
+              commonly negotiated, for your own review.
             </p>
           </div>
 

@@ -163,7 +163,7 @@ const PILL: Record<Risk, string> = {
 };
 
 const OWN_PLACEHOLDER =
-  "Paste a clause here — try one with “in perpetuity”, “sole discretion”, “without limitation” or “any and all claims”.";
+  "Paste a clause here. Try one with “in perpetuity”, “sole discretion”, “without limitation” or “any and all claims”.";
 
 type Tab = 0 | 1 | 2 | "own";
 /** `true` = the fix was applied as a redline; `"dismiss"` = the finding was waved off. */
@@ -448,7 +448,7 @@ export function ClauseDemo() {
           <div className="flex flex-col gap-2.5" aria-live="polite">
             {!analysed || busy ? (
               <p className="rounded-lg border border-dashed border-border-strong p-3.5 text-[12.5px] leading-relaxed text-text-3">
-                Pick a clause and hit <strong className="font-semibold">Analyse</strong> —
+                Pick a clause and hit <strong className="font-semibold">Analyse</strong>.
                 Lexora highlights the language it would raise and drafts wording
                 for you to consider.
               </p>

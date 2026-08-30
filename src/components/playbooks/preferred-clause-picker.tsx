@@ -84,7 +84,7 @@ export function PreferredClausePicker({
         ) : value ? (
           <span className="text-text-3">Clause {value.slice(0, 8)}…</span>
         ) : (
-          <span className="text-text-3">None — {topicLabel(topic)}</span>
+          <span className="text-text-3">None set for {topicLabel(topic)}</span>
         )}
       </div>
       {value && !disabled && (
@@ -101,7 +101,7 @@ export function PreferredClausePicker({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[80vh] max-w-xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Preferred clause — {topicLabel(topic)}</DialogTitle>
+            <DialogTitle>Preferred clause: {topicLabel(topic)}</DialogTitle>
           </DialogHeader>
           {loading ? (
             <div className="py-8 text-center text-text-3">

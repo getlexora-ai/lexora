@@ -36,7 +36,7 @@ const WORKSPACE_NAV: NavItem[] = [
 ];
 
 const INSIGHTS_NAV: NavItem[] = [
-  { label: "Risk dashboard", icon: BarChart3, href: "/risk", soon: true },
+  { label: "Risk dashboard", icon: BarChart3, href: "/risk" },
   { label: "Activity", icon: Activity, href: "/activity", soon: true },
 ];
 

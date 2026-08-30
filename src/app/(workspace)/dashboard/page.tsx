@@ -2,7 +2,7 @@
 
 import { Suspense, useState, useEffect } from "react";
 import {
-  Upload, Pencil, Trash2, FlaskConical, Loader2, Sparkles, Lock,
+  Upload, Pencil, Trash2, Sparkles, Lock,
   FileText, Shield, Clock,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -16,29 +16,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import {
-  BarChart, Bar,
-  AreaChart, Area,
-  LineChart, Line,
-  XAxis, CartesianGrid,
-  ResponsiveContainer,
-} from "recharts";
 import { cn } from "@/lib/utils";
 
-// --- Colors — the risk tokens, read live from CSS so the charts re-theme with
-// the toggle instead of being frozen to one palette. Charts are client-rendered
-// SVG, and var() resolves in SVG presentation attributes. ---
-const DOCS_COLOR   = "var(--text-2)";
-const FIXES_COLOR  = "var(--low)";
-const HIGH_COLOR   = "var(--high)";
-const MEDIUM_COLOR = "var(--med)";
-const LOW_COLOR    = "var(--low)";
-
 // --- Types ---
-type DocEntry  = { month: string; docs: number };
-type FixEntry  = { month: string; fixes: number };
-type RiskEntry = { month: string; high: number; medium: number; low: number };
 type Contract  = {
   id: string;
   name: string;
@@ -49,22 +29,6 @@ type Contract  = {
   issues_dismissed: number;
   created_at: string;
 };
-
-const docsConfig  = { docs:   { label: "Documents", color: DOCS_COLOR  } };
-const fixesConfig = { fixes:  { label: "Suggestions applied",  color: FIXES_COLOR } };
-const riskConfig  = {
-  high:   { label: "High Risk",   color: HIGH_COLOR   },
-  medium: { label: "Medium Risk", color: MEDIUM_COLOR },
-  low:    { label: "Low Risk",    color: LOW_COLOR    },
-};
-
-const axisProps = {
-  tickLine: false,
-  axisLine: false,
-  tick: { fontSize: 11, fill: "var(--text-3)" },
-} as const;
-
-const gridColor = "var(--border)";
 
 /** A contract is settled once every issue has been fixed or waved off. */
 function isResolved(c: Contract) {
@@ -158,64 +122,11 @@ function Stat({
   );
 }
 
-/** Card chrome shared by the three chart panels. */
-function ChartCard({
-  title,
-  meta,
-  legend,
-  children,
-}: {
-  title: string;
-  meta?: string;
-  legend?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <Card className="gap-0 overflow-hidden p-0">
-      {/* [.border-b]:pb-3 restates the primitive's bordered-header padding at
-          the density this bar wants — the variant selector outranks a plain
-          py-*, so it has to be answered in kind. */}
-      <CardHeader className="flex flex-row items-center justify-between gap-2.5 border-b border-border px-3.5 py-3 [.border-b]:pb-3">
-        <CardTitle className="text-[13.5px]">{title}</CardTitle>
-        {legend}
-        {meta && <span className="font-mono text-[11.5px] text-text-3">{meta}</span>}
-      </CardHeader>
-      <CardContent className="p-3.5">{children}</CardContent>
-    </Card>
-  );
-}
-
-const DUMMY_CONTRACT = {
-  name: "Master Service Agreement (Test Corp)",
-  contract_type: "MSA",
-  extracted_text: "This is a test contract. Provider's liability shall be limited to one dollar ($1). All intellectual property created belongs exclusively to Provider in perpetuity.",
-  risk_level: "high" as const,
-  clauses: [
-    {
-      type: "high" as const,
-      clause: "Clause 3: Limitation of Liability",
-      passage: "Provider's liability shall be limited to one dollar ($1).",
-      issue: "Liability cap is unreasonably low",
-      suggestion: "Provider's total aggregate liability shall not exceed the total fees paid by Client in the twelve (12) months preceding the claim.",
-      sort_order: 0,
-    },
-    {
-      type: "medium" as const,
-      clause: "Clause 4: Intellectual Property",
-      passage: "All intellectual property created belongs exclusively to Provider in perpetuity.",
-      issue: "Client retains no IP rights",
-      suggestion: "All work product created by Provider solely in connection with the Services shall be deemed works made for hire and shall be the exclusive property of Client upon full payment of all fees.",
-      sort_order: 1,
-    },
-  ],
-};
-
 function DashboardContent() {
   const { isLoaded, isSignedIn } = useUser();
   const [contracts, setContracts]   = useState<Contract[]>([]);
   const [loading, setLoading]       = useState(true);
-  const [seeding, setSeeding]       = useState(false);
-  const [seedError, setSeedError]   = useState<string | null>(null);
+  const [genError, setGenError]     = useState<string | null>(null);
 
   async function loadContracts() {
     setLoading(true);
@@ -229,29 +140,6 @@ function DashboardContent() {
 
   useEffect(() => { loadContracts(); }, []);
 
-  async function seedTestData() {
-    setSeeding(true);
-    setSeedError(null);
-    try {
-      const res = await fetch("/api/contracts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(DUMMY_CONTRACT),
-      });
-      const json = await res.json();
-      if (res.status === 401) {
-        setSeedError("Sign in to save contracts.");
-      } else if (!res.ok) {
-        setSeedError(`${res.status}: ${json.error ?? JSON.stringify(json)}`);
-      } else {
-        await loadContracts();
-      }
-    } catch (e) {
-      setSeedError(e instanceof Error ? e.message : "Unknown error");
-    }
-    setSeeding(false);
-  }
-
   // --- Summary stats derived from real contracts ---
   const totalDocuments = contracts.length;
   const totalFixes     = contracts.reduce((s, c) => s + c.issues_fixed, 0);
@@ -260,39 +148,6 @@ function DashboardContent() {
     (s, c) => s + Math.max(0, c.total_issues - c.issues_fixed - (c.issues_dismissed ?? 0)),
     0,
   );
-  const currentRisk    = {
-    high:   contracts.filter(c => c.risk_level === "high").length,
-    medium: contracts.filter(c => c.risk_level === "medium").length,
-    low:    contracts.filter(c => c.risk_level === "low").length,
-  };
-
-  // --- Chart series data ---
-  const [documentsData, _setDocumentsData] = useState<DocEntry[]>([    { month: "Oct", docs: 4 },
-    { month: "Nov", docs: 7 },
-    { month: "Dec", docs: 5 },
-    { month: "Jan", docs: 10 },
-    { month: "Feb", docs: 8 },
-    { month: "Mar", docs: 13 },
-  ]);
-
-  const [fixesData, _setFixesData] = useState<FixEntry[]>([
-    { month: "Oct", fixes: 12 },
-    { month: "Nov", fixes: 19 },
-    { month: "Dec", fixes: 14 },
-    { month: "Jan", fixes: 27 },
-    { month: "Feb", fixes: 22 },
-    { month: "Mar", fixes: 34 },
-  ]);
-
-  const [riskData, _setRiskData] = useState<RiskEntry[]>([
-    { month: "Oct", high: 3, medium: 5,  low: 8  },
-    { month: "Nov", high: 5, medium: 7,  low: 6  },
-    { month: "Dec", high: 2, medium: 9,  low: 10 },
-    { month: "Jan", high: 6, medium: 8,  low: 7  },
-    { month: "Feb", high: 4, medium: 6,  low: 12 },
-    { month: "Mar", high: 5, medium: 10, low: 9  },
-  ]);
-
 
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -373,10 +228,6 @@ function DashboardContent() {
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <Button variant="outline" onClick={seedTestData} disabled={seeding}>
-            {seeding ? <Loader2 className="size-4 animate-spin" /> : <FlaskConical className="size-4" />}
-            Seed test data
-          </Button>
           <Button variant="outline" onClick={() => { setTplStart({ from: false }); setCreateOpen(true); }}>
             <Sparkles className="size-4" />
             Generate
@@ -386,9 +237,9 @@ function DashboardContent() {
             Upload
           </Button>
         </div>
-        {seedError && (
+        {genError && (
           <div className="w-full rounded-lg border border-risk-high-line bg-risk-high-soft px-3.5 py-2 text-xs break-all text-risk-high">
-            {seedError}
+            {genError}
           </div>
         )}
         <UploadModal
@@ -408,6 +259,7 @@ function DashboardContent() {
           initialTemplateId={tplStart.id}
           onGenerate={async ({ name, contractType, party1, party2, language, keyTerms, propertyAddress, baseRentEur, operatingCostsEur, depositEur, templateId, values, useRender }) => {
             setGenerating(true);
+            setGenError(null);
             try {
               // Step 1: produce the initial draft.
               //  - template + no key terms  → instant pure render (no AI)
@@ -426,18 +278,18 @@ function DashboardContent() {
                   });
               const genData = await genRes.json();
               if (Array.isArray(genData.missing) && genData.missing.length > 0) {
-                setSeedError(`Template rendered with unfilled fields: ${genData.missing.join(", ")}. You can fix them in the editor.`);
+                setGenError(`Template rendered with unfilled fields: ${genData.missing.join(", ")}. You can fix them in the editor.`);
               }
               if (genRes.status === 429) {
                 const mins = Math.max(1, Math.round((Number(genData.retry_after) || 3600) / 60));
-                setSeedError(
+                setGenError(
                   `Generation limit reached${genData.scope === "guest" ? " (sign in for higher limits)" : ""}. Try again in about ${mins} min.`,
                 );
                 setCreateOpen(false);
                 return;
               }
               if (!genRes.ok || !genData.text) {
-                setSeedError(genData.message ?? "Couldn't generate the contract. Please try again.");
+                setGenError(genData.message ?? "Couldn't generate the contract. Please try again.");
                 setCreateOpen(false);
                 return;
               }
@@ -456,12 +308,12 @@ function DashboardContent() {
               });
               const saveData = await saveRes.json();
               if (saveRes.status === 401) {
-                setSeedError("Sign in to save a generated contract.");
+                setGenError("Sign in to save a generated contract.");
                 setCreateOpen(false);
                 return;
               }
               if (!saveRes.ok) {
-                setSeedError(saveData.message ?? "Couldn't save the generated contract. Please try again.");
+                setGenError(saveData.message ?? "Couldn't save the generated contract. Please try again.");
                 setCreateOpen(false);
                 return;
               }
@@ -473,7 +325,7 @@ function DashboardContent() {
               );
             } catch (err) {
               console.error("[generate]", err);
-              setSeedError("Couldn't generate the contract. Please try again.");
+              setGenError("Couldn't generate the contract. Please try again.");
             } finally {
               setGenerating(false);
             }
@@ -488,80 +340,6 @@ function DashboardContent() {
         <Stat icon={Sparkles} label="Suggestions applied" value={totalFixes} />
         <Stat icon={Clock} label="Open issues" value={openIssues} />
       </section>
-
-      {/* Two smaller series */}
-      <section className="grid grid-cols-1 gap-4.5 md:grid-cols-2">
-        <ChartCard title="Documents scanned" meta="last 6 months">
-          <ChartContainer config={docsConfig} className="h-[120px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={documentsData} barSize={20}>
-                <CartesianGrid vertical={false} stroke={gridColor} />
-                <XAxis dataKey="month" {...axisProps} />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Bar dataKey="docs" fill={DOCS_COLOR} fillOpacity={0.55} radius={[5, 5, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </ChartContainer>
-        </ChartCard>
-
-        <ChartCard title="Suggestions applied" meta="last 6 months">
-          <ChartContainer config={fixesConfig} className="h-[120px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={fixesData}>
-                <defs>
-                  <linearGradient id="fixesGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor={FIXES_COLOR} stopOpacity={0.28} />
-                    <stop offset="95%" stopColor={FIXES_COLOR} stopOpacity={0}    />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid vertical={false} stroke={gridColor} />
-                <XAxis dataKey="month" {...axisProps} />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Area
-                  type="monotone"
-                  dataKey="fixes"
-                  stroke={FIXES_COLOR}
-                  strokeWidth={2.25}
-                  fill="url(#fixesGrad)"
-                  dot={false}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </ChartContainer>
-        </ChartCard>
-      </section>
-
-      {/* Portfolio risk — full width */}
-      <ChartCard
-        title="Portfolio risk, last 6 months"
-        legend={
-          <div className="flex gap-3.5 text-[11px] text-text-2">
-            {[
-              { label: `High (${currentRisk.high})`,     color: HIGH_COLOR   },
-              { label: `Medium (${currentRisk.medium})`, color: MEDIUM_COLOR },
-              { label: `Low (${currentRisk.low})`,       color: LOW_COLOR    },
-            ].map(({ label, color }) => (
-              <span key={label} className="flex items-center gap-1.5">
-                <i className="size-2 rounded-[2px]" style={{ background: color }} aria-hidden />
-                {label}
-              </span>
-            ))}
-          </div>
-        }
-      >
-        <ChartContainer config={riskConfig} className="h-[150px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={riskData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-              <CartesianGrid vertical={false} stroke={gridColor} />
-              <XAxis dataKey="month" {...axisProps} />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Line type="monotone" dataKey="high"   stroke={HIGH_COLOR}   strokeWidth={2.25} dot={{ r: 2.5, fill: HIGH_COLOR,   strokeWidth: 0 }} activeDot={{ r: 4 }} />
-              <Line type="monotone" dataKey="medium" stroke={MEDIUM_COLOR} strokeWidth={2.25} dot={{ r: 2.5, fill: MEDIUM_COLOR, strokeWidth: 0 }} activeDot={{ r: 4 }} />
-              <Line type="monotone" dataKey="low"    stroke={LOW_COLOR}    strokeWidth={2.25} dot={{ r: 2.5, fill: LOW_COLOR,    strokeWidth: 0 }} activeDot={{ r: 4 }} />
-            </LineChart>
-          </ResponsiveContainer>
-        </ChartContainer>
-      </ChartCard>
 
       {/* Contracts table */}
       <Card className="gap-0 overflow-hidden p-0">

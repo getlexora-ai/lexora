@@ -76,6 +76,13 @@ export type GenerateParams = {
   /** Extra client requirements, verbatim. */
   keyTerms?: string;
   /**
+   * A pre-rendered contract template (authoritative structure + clause wording,
+   * placeholders already substituted). When set it is injected as an ADDITIONAL
+   * binding constraint ("VERBINDLICHE VERTRAGSSTRUKTUR") — it never replaces the
+   * retrieved RECHTSGRUNDLAGEN.
+   */
+  templateBody?: string;
+  /**
    * Output language for the drafted contract. Retrieval and legal grounding
    * always stay in German; `"en"` only switches the language the contract is
    * written in (statutory citations stay German). Default `"de"`.

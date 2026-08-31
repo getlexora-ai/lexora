@@ -2,7 +2,9 @@
 
 _Every workflow's **§4 Database effects** links here. This chapter is the authority on what each table is, who writes it, and how long rows live._
 
-Verified against `main` @ `bf4d660`. Source of truth: `db/schema.sql` (full load) + the numbered migrations `db/002`–`db/008`.
+Verified against `main` @ `bf4d660`, plus `db/009` (the `clause_category` enum + `risk_clauses.category`, `f40b569`). Source of truth: `db/schema.sql` (full load) + the numbered migrations `db/002`–`db/009`.
+
+> ⚠ `db/009_guardrail_category.sql` and `db/005` (RAG corpus) are **not yet applied to prod Neon** (`MEMORY.md`). Run `psql "$DATABASE_URL" -f db/009_guardrail_category.sql` before the re-analyse path works against prod.
 
 ---
 
@@ -45,7 +47,7 @@ The three back-reference FKs (`contracts.template_id`, `contracts.playbook_id`, 
 | Table | Written by (`file:line`) | Read by | Retention |
 |-------|--------------------------|---------|-----------|
 | **`contracts`** | `POST /api/contracts:56` (insert); `PATCH /api/contracts/[id]:68` (name / delta / issues_fixed); `.../reanalyse:90` (total_issues, issues_fixed→0, playbook_id); `.../clauses POST:81` (total_issues+1); `.../clauses/[clauseId] PATCH:71,76,84,89` (issues_fixed / issues_dismissed counters) | dashboard list, review screen, `original` route | **Hard `DELETE`** (`.../[id]/route.ts:86`). ⚠ `deleted_at` column exists but no API path sets it — `GET`/list filter `deleted_at is null` defensively, but nothing ever soft-deletes. |
-| **`risk_clauses`** | `POST /api/contracts:94` (bulk); `.../clauses POST:66` (user-added); `.../clauses/[clauseId] PATCH:63` (status / refined_suggestion); `.../reanalyse:79` (bulk, after deleting `status='pending'`) | review screen, `GET /api/contracts/[id]` | `ON DELETE CASCADE` from `contracts` (`db/schema.sql:118`) |
+| **`risk_clauses`** | `POST /api/contracts:94` (bulk, **no `category`**); `.../clauses POST:66` (user-added); `.../clauses/[clauseId] PATCH:63` (status / refined_suggestion); `.../reanalyse` (bulk of **12 cols incl. `category`**, after deleting `status='pending'`) | review screen, `GET /api/contracts/[id]` (does **not** select `category`) | `ON DELETE CASCADE` from `contracts` (`db/schema.sql:118`) |
 | **`clause_refinements`** | `.../clauses/[clauseId]/refinements POST:28`; the dead `POST /api/clauses/[clauseId]/refinements:47` | **Nothing in the UI reads it.** `GET` handlers exist, no caller. | cascade from `risk_clauses` (`:149`) |
 | **`contract_versions`** | `.../versions POST:46` (one row per Apply-fix, AI edit, manual save, restore) | History tab | cascade (`:164`). ⚠ Unbounded — no pruning, one jsonb blob per snapshot. |
 | **`chat_messages`** | `.../chat POST:46` (user turn and assistant turn saved separately by the client) | review chat panel on load | cascade (`:181`) |
@@ -88,6 +90,8 @@ One row per analysed or generated contract.
 
 ### `risk_clauses` (`db/schema.sql:116-139`)
 
+> _Partial re-verify @ `f40b569`: the `category` column (`db/009`) is added below. Everything else is at `bf4d660`._
+
 One row per flagged clause (AI or user-added).
 
 | Column | Type | Notes |
@@ -105,6 +109,7 @@ One row per flagged clause (AI or user-added).
 | `reference` | text | db/008 — the German norm (`"§ 307 BGB"`). Persisted only on the re-analyse path and the analysis-page save; the plain `/api/analyse` → save path also carries it. |
 | `playbook_rule_id` | uuid → playbook_rules | db/008 — which rule this finding graded against. Drives the review-tab verdict chip. |
 | `verdict` | playbook_verdict | `meets` / `fallback` / `redline` — the model's grade against `playbook_rule_id`. |
+| `category` | clause_category | **db/009** (`db/schema.sql:137`) — `compliance` (clause is void / breaches a statutory guardrail) vs `negotiation` (playbook-position redline) vs `info` (reserved, unused). Set by the [clause-guardrail engine](h9-guardrails.md#category) (`applyGuardrails` in `src/lib/analysis.ts`), **not** the model. Written **only** by `POST /api/contracts/[id]/reanalyse` — the [B5](b-getting-a-contract-in.md#b5) `POST /api/contracts` insert has no `category` column, and `GET /api/contracts/[id]` doesn't select it. "Error-free" for a fresh generation = zero `compliance` rows (issue #8). |
 | `dismissed_reason`, `dismissed_at`, `replaced_at` | | audit timestamps. |
 
 ### `contract_versions` (`db/schema.sql:162-171`)
@@ -145,9 +150,9 @@ See [H2](h2-rate-limiting.md#tables).
 
 ---
 
-## Enums (`db/schema.sql:27-43`)
+## Enums (`db/schema.sql:27-46`)
 
-`risk_level` (high/medium/low) · `clause_status` (pending/replaced/dismissed) · `clause_source` (ai/user) · `org_member_role` (owner/admin/editor/viewer, unused) · `approval_status` (pending/approved/rejected, unused) · `chat_role` (user/assistant) · `clause_library_source` (curated/user/imported) · `clause_posture` (preferred/fallback/walk_away) · `template_source` (curated/user) · `playbook_source` (curated/user) · `playbook_verdict` (meets/fallback/redline/missing).
+`risk_level` (high/medium/low) · `clause_status` (pending/replaced/dismissed) · `clause_source` (ai/user) · `clause_category` (compliance/negotiation/info — **db/009**, `schema.sql:46`) · `org_member_role` (owner/admin/editor/viewer, unused) · `approval_status` (pending/approved/rejected, unused) · `chat_role` (user/assistant) · `clause_library_source` (curated/user/imported) · `clause_posture` (preferred/fallback/walk_away) · `template_source` (curated/user) · `playbook_source` (curated/user) · `playbook_verdict` (meets/fallback/redline/missing).
 
 ---
 

@@ -2,7 +2,7 @@
 
 The index for this doc set. Every user-visible action in Lexora is one numbered **workflow** (`B5`, `C4`, `D3`, …); the **H-chapters** are the shared machinery every workflow leans on. Read [00-conventions](00-conventions.md) first — it defines the per-workflow template, the mermaid rules, and the observability rubric.
 
-Verified against `main` @ `bf4d660`. The root [`README.md`](../../README.md) is a marketing description and is **stale** on architecture (it predates the Supabase→Neon and Claude→Gemini ports); **this set supersedes it** as the map of what-does-what.
+Verified against `main` @ `bf4d660`, with the clause-guardrails + editor changes through `f40b569` folded into [H9](h9-guardrails.md) and the sections noted in _Maintenance_ below. The root [`README.md`](../../README.md) is a marketing description and is **stale** on architecture (it predates the Supabase→Neon and Claude→Gemini ports); **this set supersedes it** as the map of what-does-what.
 
 ---
 
@@ -26,6 +26,7 @@ flowchart TD
 
   subgraph api ["Route handlers /api/*"]
     RH["contracts · clauses · versions · chat<br/>analyse · generate · refine · contract-edit · reanalyse<br/>clause-library · templates · playbooks"]
+    GRD["clause guardrails · H9<br/>deterministic statutory checks"]
   end
 
   subgraph ext [Edge services]
@@ -48,6 +49,8 @@ flowchart TD
   MW -->|gated compute only| RL --> RH
   MW -->|everything else| RH
   RH --> CK & PG & GM & LW & ST
+  RH --> GRD
+  GRD -.->|generate repair pass| GM
   GM -.->|grounded lease B7 · semantic search D3| PG
 ```
 
@@ -55,6 +58,8 @@ Two rules explain most of the topology:
 
 - **`proxy.ts` gates a POST to one of nine compute paths** — the eight in `GATED_COMPUTE_PATHS` (`/api/extract`, `/api/analyse`, `/api/generate`, `/api/refine`, `/api/chat`, `/api/contract-edit`, `/api/clause-library/search`, `/api/templates/suggest-variables`) plus `/api/contracts/*/reanalyse` via `GATED_COMPUTE_PATTERN`. The gate only fires on `POST`; a guest hitting one gets a 401 at the middleware. Everything else — all the CRUD — is guarded inside the handler by `currentUserId()` + an `owns*` check ([H1](h1-auth-and-ownership.md)).
 - **Compute routes call `enforceRateLimit` first**, per-tier hour/day buckets plus a global `compute` tier ([H2](h2-rate-limiting.md)). A 429 writes the one durable runtime row the system produces.
+
+`generate`, `analyse` and `reanalyse` also run a **deterministic clause-guardrail check** ([H9](h9-guardrails.md)) — a tiny statutory-limit policy, no model call. Generation gates on it (one bounded LLM repair pass on a hard failure); analysis folds it into its findings and tags each `compliance` vs `negotiation`.
 
 ---
 
@@ -91,6 +96,8 @@ Two rules explain most of the topology:
 | B9 | Render from a template — no AI | same, `templateId`, no key terms | currentUserId | N | `contracts` |
 | B10 | Seed test data | dashboard **Seed test data** | currentUserId | N | `contracts`, `risk_clauses` |
 
+B3/B4 and B6/B7 additionally run the [H9](h9-guardrails.md) clause-guardrail check (no model call): analyse returns a `guardrails` report and `compliance`/`negotiation`-tagged findings; generate gates on it with one bounded LLM repair pass. B9 (`rendered: true` fast path) also returns a `guardrails` report.
+
 ### C — The review screen ([c1](c1-review-document.md) · [c2](c2-review-findings.md) · [c3](c3-review-ai-and-output.md))
 
 | id | Workflow | Entry point | Auth | Compute? | Writes |
@@ -105,7 +112,7 @@ Two rules explain most of the topology:
 | C8 | Dismiss ("not an issue") + restore | finding card **Dismiss** / **Restore** | owns\* | N | `risk_clauses`, `contracts` |
 | C9 | Add a clause the AI missed | **Add clause** form | owns\* | N | `risk_clauses`, `contracts` |
 | C10 | Contract chat (Q&A) + history | chat panel send | proxy-gated + owns\* | **Y** | `chat_messages` |
-| C11 | Create-mode AI edit (whole-document rewrite) | `mode=create` editor **Ask AI to edit** | proxy-gated + owns\* | **Y** | `contracts`, `contract_versions`, `chat_messages` |
+| C11 | Ask AI edit — targeted find/replace or full rewrite | **Ask AI** panel (Review tab or `mode=create`) | proxy-gated + owns\* | **Y** | `contracts`, `contract_versions`, `chat_messages` |
 | C12 | Selection toolbar → refine selected text | text selection → **Refine** | proxy-gated | **Y** | `contracts.quill_delta` |
 | C13 | Version snapshot, history list, restore | **Save version** / History / **Restore** | client (+ owns\* on `/versions`) | N | `contract_versions` (+ `contracts` on restore) |
 | C14 | Re-analyse (± playbook) | **Re-analyse** button | proxy-gated + owns\* | **Y** | `risk_clauses`, `contracts` |
@@ -152,7 +159,7 @@ Two rules explain most of the topology:
 |----|----------|-------------|------|:--------:|--------|
 | G1 | Workspace shell — sidebar + top bar | any `(workspace)` route | signed-in | N | — |
 | G2 | Contract list + client-side filter | `/dashboard` | currentUserId | N | — |
-| G3 | Stat tiles + charts | `/dashboard` | signed-in (client) | N | — (trend series are placeholder constants) |
+| G3 | Stat tiles (dashboard) + portfolio charts (`/risk`) | `/dashboard` tiles; `/risk` **Risk dashboard** | signed-in (client) | N | — (charts now bucket real `created_at`) |
 | G4 | Rename a contract | list row pencil | currentUserId (ownership: SQL `WHERE` only) | N | `contracts.name` |
 | G5 | Delete a contract (hard delete, no confirm) | list row trash | currentUserId (ownership: SQL `WHERE` only) | N | `contracts` + **cascade** |
 | G6 | New-menu deep-links | sidebar **New ▸** | none | N | — (→ B1 / B6–B9) |
@@ -171,14 +178,15 @@ Two rules explain most of the topology:
 | [H6](h6-database-schema.md) | Database schema | Every table, column, index, trigger and FK in `db/schema.sql`; every workflow's **§4 Database effects** links here. |
 | [H7](h7-storage.md) | Storage | `putOriginal` / `getOriginal` behind a driver (`none` by default → a no-op that returns `null`); only `/api/extract` ever writes, and it swallows failures to `console.error`. |
 | [H8](h8-observability.md) | Observability | The register of all 178 **§9** gaps by tier and class; what the running system emits today (26 `console.*`, zero `console.info`, no timing, no analytics); the tier-0 "first hour" of ~12 `console.info` lines. |
+| [H9](h9-guardrails.md) | Clause guardrails | `src/lib/guardrails/*` — a deterministic 7-rule statutory-limit policy for German residential leases (Kaution ≤ 3 NKM, 12-month Betriebskosten deadline, § 573c notice, no starre Fristen …). `generate` gates + one repair pass; `analyse`/`reanalyse` fold it in and tag findings `compliance` vs `negotiation` (`risk_clauses.category`, `db/009`). Issue #8. |
 
-Also: **[z-dead-and-unwired.md](z-dead-and-unwired.md)** — code that ships but no live path reaches (the whole `/onboarding` wizard, `SaveAsTemplateDialog`, the guest `pendingSave` flow, `was_applied`, dead dashboard affordances), and bugs that are shipped and known.
+Also: **[z-dead-and-unwired.md](z-dead-and-unwired.md)** — code that ships but no live path reaches (the whole `/onboarding` wizard, `SaveAsTemplateDialog`, the guest `pendingSave` flow, the `src/lib/pii/*` toolkit + `/dev/pii` playground, `was_applied`, dead dashboard affordances), and bugs that are shipped and known (incl. the `risk_clauses.category` / `guardrails`-response drop at `f40b569`).
 
 ---
 
 ## Maintenance & verification
 
-- **Every file states the commit it was checked against** — the `Verified against \`main\` @ \`<sha>\`` line under the title. This whole set is currently at `bf4d660`.
+- **Every file states the commit it was checked against** — the `Verified against \`main\` @ \`<sha>\`` line under the title. The set was written against `bf4d660`; [H9](h9-guardrails.md) is at `f40b569`, and [b-getting-a-contract-in](b-getting-a-contract-in.md), [c1](c1-review-document.md), [c3](c3-review-ai-and-output.md), [g](g-dashboard-and-workspace.md), [h6](h6-database-schema.md) and [z](z-dead-and-unwired.md) carry `f40b569` partial-reverify notes on the sections touched by the clause-guardrails + editor work.
 - **To re-verify a file after a code change:** open every `file:line` it cites, at that line, and confirm the claim still holds; correct drift; bump the SHA line. The mandated source-of-truth for a chapter is the lib module(s) and route handler(s) it documents, not the UI components (those cites are best-effort).
 - **To add a workflow:** give it a stable lowercase `<id>` (`h3`, `c18`, …), follow the [00-conventions](00-conventions.md#the-per-workflow-template) template section-for-section, add a row to the master table above, and — in its **§9** block — give each gap a stable id `<ID>-On`. [H8](h8-observability.md)'s register is regenerated from those blocks, so a new gap id appears there once the §9 table carries it.
 - **This set supersedes the root `README.md` on architecture, and any hand-maintained "what-does-what" / verification checklist (e.g. an older `check.md`).** [`docs/product-audit.md`](../product-audit.md) is a separate, still-current artifact (the Wave A/B/C fix log) — it is not superseded. If you find a stale architecture reference elsewhere, point it here.

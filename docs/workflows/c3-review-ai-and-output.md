@@ -103,50 +103,56 @@ sequenceDiagram
 
 ---
 
-## <a id="c11"></a>C11 — Create-mode AI edit (whole-document rewrite)
+## <a id="c11"></a>C11 — Ask AI edit — targeted find/replace or full rewrite
 
-**0 · TL;DR** — When `?mode=create`, the composer routes to `/api/contract-edit`: the **entire** current document (no cap) plus the instruction and history go to Gemini, which returns the complete rewritten contract and a short explanation split on the literal string `---EXPLANATION---`. The rewrite replaces the editor content, is autosaved, and is snapshotted.
+**0 · TL;DR** — The **Ask AI** composer (Review tab *or* `?mode=create`) posts the instruction + the live document **as Markdown** + the chat history to `/api/contract-edit`. One endpoint answers questions **and** edits. For an edit the model returns EITHER a small JSON array of `{ find, replace }` **targeted edits** (the normal case) OR a **full rewrite**. Targeted edits are applied one at a time as visible green tracked changes, mis-matched ones skipped and reported; a full rewrite replaces the document via `applyDocMarkdown`. Either way: a **pre-edit** `contract_versions` snapshot is taken first, then `quill_delta` is autosaved.
 
-**1 · Entry point** — `src/app/review/page.tsx:113` `isCreateMode = searchParams.get("mode") === "create"` (set by every generate path, [B6](b-getting-a-contract-in.md#b6)–[B9](b-getting-a-contract-in.md#b9)). The side panel opens on "Ask AI" in create mode (`:155`). `handleChat` branches at `:725`.
+> _Re-verify @ `f40b569`: this section is substantially rewritten. Since `bf4d660`: `/api/contract-edit` is dual-purpose (answer / edit) with a `---MODE--- / ---ANSWER--- / ---CHANGES--- / ---DOCUMENT---` reply parsed by `src/lib/contract-edit-reply.ts` (the old `---EXPLANATION---` split is now a legacy fallback); the input is `liveMarkdown()` not `liveText()` (issue #7); targeted find/replace is the default (issue: "AI edits apply as targeted find/replace, not full rewrites"); the Review-tab Ask AI panel now actually edits (previously inert); the snapshot is taken **before** the edit._
 
-**2 · Preconditions** — `POST /api/contract-edit` is [gated](h1-auth-and-ownership.md#gate) (`src/proxy.ts:18`), on the `contract-edit` tier ([H2](h2-rate-limiting.md#tiers)); no ownership check in the handler. Applying the result needs `quillRef.current`; persistence needs `contractId`.
+**1 · Entry point** — `src/app/review/page.tsx` — `handleChat()` (`:788`), reached from the shared composer (`sendFromComposer`, `:1006-1011` — sending from the Review tab calls `setSidePanel("chat")` first so the answer is never written off-screen). `isCreateMode` (`:141`) only decides which panel tab opens by default (`:183`); the edit path itself is identical in both modes.
+
+**2 · Preconditions** — `POST /api/contract-edit` is [gated](h1-auth-and-ownership.md#gate) (`src/proxy.ts`), on the `contract-edit` tier ([H2](h2-rate-limiting.md#tiers)); **no ownership check** in the handler. Applying an edit needs `quillRef.current`; the pre-edit snapshot + the autosave need `contractId`.
 
 **3 · Trace**
-1. `page.tsx:721` — `saveChatMessage("user", q)` (the instruction is stored as a chat turn, same as [C10](#c10)).
-2. `page.tsx:727-735` — `fetch("/api/contract-edit", { POST, body: { instruction: q, currentDocument: liveText(), history: chatHistory } })`.
+1. `page.tsx:793` — `saveChatMessage("user", q)` (the instruction is stored as a chat turn, same as [C10](#c10)).
+2. `page.tsx:798-806` — `fetch("/api/contract-edit", { POST, body: { instruction: q, currentDocument: liveMarkdown(), history: chatHistory } })`. **`liveMarkdown()`** (`page.tsx:696-700`) = `deltaToMarkdown(quill.getContents())` — headings / bold / lists survive the round-trip (issue #7); the old `liveText()` sent `quill.getText()`, flattened.
 
 ```
 POST /api/contract-edit · auth: proxy-gated · limit: contract-edit
   req  { instruction, currentDocument, history }        ⚠ currentDocument is NOT truncated
-  res  { updatedDocument, explanation }
+  res  { mode: "answer" | "edit", answer, changes?: [{find,replace,note}], updatedDocument? }
 ```
 
-3. `contract-edit/route.ts:8` — `enforceRateLimit(req, "contract-edit")`.
-4. `contract-edit/route.ts:18-31` — `systemPrompt` instructs: apply the change, return the COMPLETE updated contract, then `---EXPLANATION---` + 1–2 sentences. `Current contract:\n${currentDocument}` is inlined **verbatim, uncapped** (`:31`) — per the product audit, the one LLM call with no input guard.
-5. `contract-edit/route.ts:33-37` — `askLLM({ system, messages: [...(history ?? []), { role: "user", content: instruction }], maxTokens: 8192 })`.
-6. `contract-edit/route.ts:40-42` — `text.split("---EXPLANATION---")`; `updatedDoc = parts[0].trim()`; `explanation = parts[1]?.trim() ?? "Contract updated."` — brittle: if the model omits or reformats the separator, the whole reply becomes `updatedDocument` and the explanation defaults.
-7. `page.tsx:736-739` — `answer = rateLimitNote(...) ?? (res.ok ? data.explanation ?? "Contract updated." : data.message ?? …)`.
-8. `page.tsx:740-742` — `if (data.updatedDocument && quillRef.current)` → `setDocText(quillRef.current, data.updatedDocument)` (Markdown-aware, [C3](c1-review-document.md#c3)), then `quillRef.current.history.clear()`.
-9. `page.tsx:744-749` — `if (contractId)` → fire-and-forget `PATCH /api/contracts/{contractId}` with `{ quill_delta: quillRef.current.getContents() }`.
-10. `page.tsx:750` — `void snapshotVersion(\`AI edit: ${q.slice(0, 80)}\`)` — fire-and-forget snapshot (see [C13](#c13)).
-11. `page.tsx:769-770` — the `explanation` is appended as an assistant bubble and saved via `saveChatMessage`.
+3. `contract-edit/route.ts:9` — `enforceRateLimit(req, "contract-edit")`. `:21-24` — `400 "Missing instruction"` if blank; `currentDocument` **may** be empty (create flow's first message).
+4. `contract-edit/route.ts:26-70` — `systemPrompt`: the doc is Markdown; every message is a QUESTION (answer, don't edit) or an INSTRUCTION; for a change pick **TARGETED EDITS** (JSON array, each `find` copied verbatim, long enough to be unique, `replace` = `""` to delete) or **FULL REWRITE** (only for genuinely document-wide changes). Reply shape: `---MODE---` / `---ANSWER---` / `---CHANGES---` (or `---DOCUMENT---`). `Current contract:\n${doc}` inlined **verbatim, uncapped** (`:69-70`) — still the one LLM call with no input guard ([H5](h5-llm-layer.md#max-chars), [Z-B10](z-dead-and-unwired.md)).
+5. `contract-edit/route.ts:72-78` — `askLLM({ system, messages: [...(history ?? []), { role: "user", content: instruction }], maxTokens: 8192 })`.
+6. `contract-edit/route.ts:80` — `parseEditReply(text, doc.length)` (`src/lib/contract-edit-reply.ts:92`) — a **deliberately forgiving** parser: a reply that ignores the format → `{ mode: "answer" }`; unparseable `---CHANGES---` JSON → falls back to answer; a `---DOCUMENT---` shorter than `max(40, prevLength * 0.5)` is assumed truncated and **downgraded to an answer** — a malformed reply can never blank the contract. Legacy `<doc>---EXPLANATION---<expl>` still recognised.
+7. `contract-edit/route.ts:82-87` — respond `{ mode, answer, changes? , updatedDocument? }`.
+8. `page.tsx:809-816` — `answer` = rate-limit note ?? (`res.ok` ? `data.answer` : error msg); `changes = res.ok && Array.isArray(data.changes) ? data.changes : []`; `willEdit = res.ok && quillRef.current && (changes.length > 0 || !!data.updatedDocument)`.
+9. `page.tsx:820` (only when `willEdit` **and** `contractId`) — `await snapshotVersion(\`Before AI edit: ${q.slice(0,72)}\`)` — **awaited**, so a bad edit is one click to undo from History ([C13](#c13)).
+10. **Targeted edits** (`page.tsx:822-831`) — `applyChanges(quill, changes)` (`:772-788`): for each op, `findPassage(quill.getText(), ch.find)` — no match → push to `skipped`, continue; else `quill.deleteText(...)` + `quill.insertText(start, ch.replace, { background: "var(--mark-applied)" }, "user")` (the same green tracked-change highlight as Apply-fix, [C4](c2-review-findings.md#c4)). `answer` gets a suffix: "Applied N changes", or "Applied N of M … Couldn't locate: …", or "Couldn't locate any of the M passages — nothing was edited."
+11. **Full rewrite** (`page.tsx:832-834`) — `applyDocMarkdown(quill, data.updatedDocument)` (`page.tsx:45-49`) — Markdown→HTML→delta, **never** the `setText` fallback ([C3](c1-review-document.md#c3), issue #7).
+12. `page.tsx:835` — `quillRef.current.history.clear()`; `page.tsx:837-842` — `if (contractId)` fire-and-forget `PATCH /api/contracts/{id} { quill_delta }`, `.catch(() => {})` (**fully swallowed**).
+13. `page.tsx:845-846` — `answer` appended as an assistant bubble + `saveChatMessage("assistant", answer)`.
 
-**4 · Database effects** — `contracts.quill_delta` UPDATE (step 9) + one `contract_versions` INSERT (step 10) + two `chat_messages` INSERTs (instruction + explanation). All fire-and-forget, no transaction. `/api/contract-edit` writes only `rate_limits`.
+**4 · Database effects** — When an edit lands: one **pre-edit** `contract_versions` INSERT (step 9, awaited) + one `contracts.quill_delta` UPDATE (step 12, fire-and-forget) + two `chat_messages` INSERTs (instruction + answer). A pure QUESTION writes only the two `chat_messages`. No transaction. `/api/contract-edit` itself writes only `rate_limits`.
 
-**5 · External calls** — Gemini via `askLLM`, `maxTokens: 8192`, **no input cap** on `currentDocument`. A large generated draft plus history can approach the model's context limit; [H5](h5-llm-layer.md#max-chars) documents every other call site's cap and the absence here.
+**5 · External calls** — Gemini via `askLLM`, `maxTokens: 8192`, **no input cap** on `currentDocument`. A large generated draft plus history can approach the context limit; [H5](h5-llm-layer.md#max-chars) documents every other call site's cap and the absence here.
 
-**6 · End state** — The editor holds the rewritten contract; `contracts.quill_delta` and a `contract_versions` row capture it; the chat panel shows the instruction and the explanation. The replaced text is `setDocText`'d fresh — Quill history is cleared, so the rewrite is **not undoable** in the editor (only restorable via the History tab, [C13](#c13)).
+**6 · End state** — For a targeted edit: the changed spans carry the green `--mark-applied` background; untouched formatting is byte-preserved (nothing else was re-serialised). For a rewrite: the whole document is replaced. Quill history is cleared → the AI edit is **not editor-undoable**, only restorable from the pre-edit History snapshot ([C13](#c13)). The chat panel shows the instruction and the answer (with the applied/skipped summary).
 
 **7 · Failure modes**
 
 | Trigger | HTTP / behaviour | User sees | Survives |
 |---------|------------------|-----------|----------|
 | Guest / rate-limited | 401 / 429 | error or limit bubble | bubble saved as an assistant turn |
-| Model omits `---EXPLANATION---` | `parts[1]` undefined → `explanation = "Contract updated."`; `updatedDoc` = the whole reply (may include the model's own preamble) | generic explanation; possibly polluted document | the polluted rewrite is autosaved + snapshotted |
-| `updatedDocument` empty | step 8 guard fails → editor untouched | "Contract updated." but nothing changed | no-op |
-| `PATCH` fails (step 9) | `.catch(() => {})` — **fully swallowed** (`:749`) | editor shows the rewrite | `quill_delta` stale → reload loses the rewrite (unless the snapshot landed) |
-| `snapshotVersion` fails | `console.error` (`:515`) | nothing | no History entry for this edit |
-| In-memory session | rewrite applied to Quill; steps 9–10 skipped | works now | lost on navigation |
+| Message is a question | `mode: "answer"`, no `changes`/`updatedDocument` → `willEdit` false | the answer only; document untouched | n/a |
+| Model's `find` doesn't match the live text | that op is skipped, listed in the answer ("Couldn't locate: …"); others still apply | partial apply, named | the matched ops persist; a pre-edit snapshot exists regardless |
+| No op matches | `applied === 0` → answer says "nothing was edited" | document untouched | the (no-op) pre-edit snapshot was still taken |
+| `---CHANGES---` JSON unparseable / `---DOCUMENT---` too short | `parseEditReply` downgrades to `{ mode: "answer" }` | an answer, no edit | contract never blanked |
+| `PATCH` fails (step 12) | `.catch(() => {})` — **fully swallowed** | editor shows the edit | `quill_delta` stale → reload loses it unless the pre-edit snapshot is restored (which reverts it too) |
+| `snapshotVersion` fails | `console.error("[snapshotVersion] failed:", err)` (`page.tsx:557`); the `await` resolves, the edit still applies | nothing | edit applies with **no** undo point |
+| In-memory session (no `contractId`) | steps 9 + 12 skipped; edit applied to Quill only | works now | lost on navigation |
 
 **8 · Sequence diagram**
 
@@ -157,32 +163,37 @@ sequenceDiagram
   participant API as Route handler
   participant PG as Postgres (Neon)
   participant GM as Gemini
-  B->>MW: POST /api/contract-edit { instruction, currentDocument (uncapped), history }
+  B->>MW: POST /api/contract-edit { instruction, currentDocument = liveMarkdown() (uncapped), history }
   MW->>API: forward (gated)
   API->>API: enforceRateLimit("contract-edit")
   API->>GM: generateContent (system + messages, maxTokens 8192)
-  GM-->>API: "[full contract]---EXPLANATION---[note]"
-  API->>API: split on "---EXPLANATION---"
-  API-->>B: { updatedDocument, explanation }
-  B->>B: setDocText(quill, updatedDocument) ; history.clear()
-  B-)API: PATCH /api/contracts/{id} { quill_delta }
-  API->>PG: UPDATE contracts SET quill_delta
-  B-)API: POST /api/contracts/{id}/versions { quill_delta, snapshot_reason }
-  API->>PG: INSERT contract_versions
+  GM-->>API: ---MODE--- / ---ANSWER--- / ---CHANGES--- | ---DOCUMENT---
+  API->>API: parseEditReply(text, doc.length)  (forgiving; downgrades to answer)
+  API-->>B: { mode, answer, changes? | updatedDocument? }
+  alt willEdit
+    B->>API: POST /api/contracts/{id}/versions { quill_delta, reason }  (awaited — pre-edit)
+    API->>PG: INSERT contract_versions
+    B->>B: applyChanges (per-op findPassage + green mark) OR applyDocMarkdown
+    B->>B: history.clear()
+    B-)API: PATCH /api/contracts/{id} { quill_delta }   (.catch(()=>{}))
+    API->>PG: UPDATE contracts SET quill_delta
+  end
+  B->>B: append assistant bubble ; saveChatMessage
 ```
 
 **9 · Observability notes**
-> **What you can see today.** `errorResponse("contract-edit", …)` on a route throw. The step-9 `PATCH` failure is swallowed by `.catch(() => {})` (`page.tsx:749`) — no log at all. No log of document size sent (the uncapped input), split success, or rewrite length.
-> **What you can't.** How large the uncapped `currentDocument` payloads get (context-limit risk). How often the `---EXPLANATION---` split fails. How often the persist step silently drops a rewrite. AI-edit volume and latency.
+> **What you can see today.** `errorResponse("contract-edit", …)` on a route throw. `console.error("[snapshotVersion] failed:", err)` (`page.tsx:557`) if the pre-edit snapshot POST rejects. The step-12 `PATCH` failure is `.catch(() => {})` — no log. No log of `mode`, `changes.length`, how many ops were skipped, `currentDocument` size, or whether `parseEditReply` had to downgrade.
+> **What you can't.** How large the uncapped `currentDocument` payloads get. How often the model returns edits that don't match the live text (the `skipped` rate — a direct quality signal). Targeted-edit vs full-rewrite split. How often a persist silently drops an edit. AI-edit volume and latency.
 >
 > | # | Blind spot | Class | Cheapest fix |
 > |---|-----------|-------|--------------|
-> | C11-O1 | Uncapped input size unmeasured | NO-METRIC | `console.info("[contract-edit] in", { chars: currentDocument.length })` — tier 0; then add a cap — tier 1 |
-> | C11-O2 | `---EXPLANATION---` split failure invisible | NO-LOG | log when `parts.length < 2` in the route — tier 0 |
-> | C11-O3 | Step-9 persist failure fully swallowed (`.catch(() => {})`) | SILENT-CATCH | replace with `.catch(err => console.error("[ai-edit] persist", err))` + toast — tier 0 |
-> | C11-O4 | No AI-edit event (count, ms, inLen, outLen) | NO-LOG | one `console.info` after step 10 — tier 0 |
+> | C11-O1 | Uncapped input size unmeasured | NO-METRIC | `console.info("[contract-edit] in", { chars: doc.length })` — tier 0; then add a cap — tier 1 |
+> | C11-O2 | `parseEditReply` downgrade (bad format / short doc) invisible | NO-LOG | log when the parser falls back to `answer` despite `wantsEdit` — tier 0 |
+> | C11-O3 | Step-12 persist failure fully swallowed (`.catch(() => {})`) | SILENT-CATCH | `.catch(err => console.error("[ai-edit] persist", err))` + toast — tier 0 |
+> | C11-O4 | No AI-edit event (mode, ms, inLen, applied, skipped) | NO-LOG | one `console.info` after step 12 — tier 0 |
+> | C11-O5 | `skipped` op count (model gave a wrong `find`) not counted — key edit-quality metric | NO-METRIC | count `skipped.length` per call — tier 0/2 |
 
-**10 · See also** — [B6](b-getting-a-contract-in.md#b6)–[B9](b-getting-a-contract-in.md#b9) (what sets `mode=create`), [C10](#c10) (the non-create branch), [C13](#c13) (`snapshotVersion`), [H5](h5-llm-layer.md#max-chars).
+**10 · See also** — [B6](b-getting-a-contract-in.md#b6)–[B9](b-getting-a-contract-in.md#b9) (what sets `mode=create`), [C4](c2-review-findings.md#c4) (`findPassage` + the same green tracked-change highlight), [C10](#c10) (chat Q&A history — the same `chat_messages` + `saveChatMessage`), [C13](#c13) (`snapshotVersion`), [C3](c1-review-document.md#c3) (`applyDocMarkdown`, `liveMarkdown`), [H5](h5-llm-layer.md#max-chars), [Z-B10](z-dead-and-unwired.md).
 
 ---
 
@@ -348,7 +359,9 @@ sequenceDiagram
 
 ## <a id="c14"></a>C14 — Re-analyse (± playbook)
 
-**0 · TL;DR** — "Re-analyse" `POST`s the **live editor text** and the selected `playbookId` to `/api/contracts/{id}/reanalyse`, which re-runs the analysis (plain or playbook-aware), **deletes only the `pending` clauses**, bulk-inserts the new findings, and sets `total_issues = N`, `issues_fixed = 0`, `playbook_id` — but does **not** reset `issues_dismissed` or `risk_level`.
+**0 · TL;DR** — "Re-analyse" `POST`s the **live editor text** and the selected `playbookId` to `/api/contracts/{id}/reanalyse`, which re-runs the analysis (plain or playbook-aware) **plus the deterministic [clause-guardrail](h9-guardrails.md) check**, **deletes only the `pending` clauses**, bulk-inserts the new findings (now with a `compliance`/`negotiation` `category` column), and sets `total_issues = N`, `issues_fixed = 0`, `playbook_id` — but does **not** reset `issues_dismissed` or `risk_level`. The response carries a `guardrails` report, which the review screen renders as a `GuardrailStrip` above the editor — **the one place in the app it is shown**.
+
+> _Partial re-verify @ `f40b569`: the `guardrails` fold, the `category` column (bulk insert `COLS = 11 → 12`), and the `GuardrailStrip` render are current; the delete/insert/update mechanics and the no-transaction hazard are unchanged from `bf4d660`._
 
 **1 · Entry point** — `src/app/review/page.tsx:777` `async function handleReanalyse()`. Buttons: the panel-head "Re-analyse" (`:1341-1346`, non-create only, requires `contractId`) and the Playbook tab's "Re-analyse with this playbook" ([C15](#c15)).
 
@@ -360,24 +373,26 @@ sequenceDiagram
 ```
 POST /api/contracts/{id}/reanalyse · auth: proxy-gated + owns* · limit: reanalyse
   req  { text, playbookId?, contractType? }              language defaults to "de" server-side
-  res  { clauses }  |  { clauses, coverage, playbook: { id, name, is_approved } }
+  res  { clauses, guardrails }  |  { clauses, coverage, guardrails, playbook: { id, name, is_approved } }
+         clauses[].category = "compliance" | "negotiation"
 ```
 
 2. `reanalyse/route.ts:14-21` — `currentUserId()` → `signInRequired()`; `ownsContract`; `enforceRateLimit(req, "reanalyse")`.
 3. `reanalyse/route.ts:23-30` — parse; `400 "No text provided"` if blank; `lang = language === "en" ? "en" : "de"` → **always `"de"`** given the client never sends `language`.
 4. `reanalyse/route.ts:33-34` — `resolvePlaybookForAnalysis(userId, contractType ?? "", playbookId ?? null)` ([F5](f-playbooks.md#f5)); `usePlaybook = !!pb && pb.rules.length > 0`.
-5. `reanalyse/route.ts:38-48` — `analyseContractWithPlaybook(text, { language: lang, rules })` or `analyseContract(text, lang)` (the same functions as [B3](b-getting-a-contract-in.md#b3) / [B4](b-getting-a-contract-in.md#b4) — see [H5](h5-llm-layer.md)). A throw → `500 { error }`.
-6. `reanalyse/route.ts:61` — `DELETE FROM risk_clauses WHERE contract_id = $1 AND status = 'pending'` — **`replaced` and `dismissed` rows are kept.**
-7. `reanalyse/route.ts:63-88` — if `issues.length > 0`, one bulk `INSERT INTO risk_clauses (contract_id, type, clause, passage, issue, suggestion, sort_order, status, reference, playbook_rule_id, verdict)` — **11 value columns per row** (`:79-87`), `status='pending'`, `sort_order = i`, `reference` / `rule_id` / `verdict` from the analysis.
-8. `reanalyse/route.ts:90-93` — `UPDATE contracts SET total_issues = $1, issues_fixed = 0, playbook_id = $2 WHERE id = $3` (`$2` = `pb.playbook.id` when a playbook was used, else `null`). ⚠ **`issues_dismissed` is not touched; `risk_level` is not recomputed.**
-9. `reanalyse/route.ts:98-119` — build `clauses[]` from the inserted rows (id/type/clause/passage/issue/suggestion + optional reference/playbook_rule_id/verdict — **no `source` field**); respond `{ clauses }` or `{ clauses, coverage, playbook }`.
-10. `page.tsx:789-800` — `rateLimitNote` / `!res.ok` handling; on success `setClauses(data.clauses)`, `setFixedCount(0)`, `setActiveCardId(null)` (`:794-798`); `setCoverage(Array.isArray(data.coverage) ? data.coverage : [])` (`:799`); `if (data.playbook?.id) setPlaybookId(data.playbook.id)` (`:800`).
+5. `reanalyse/route.ts:41-52` — `analyseContractWithPlaybook(text, { language: lang, rules, contractType })` or `analyseContract(text, { language: lang, contractType })` — **both now return `{ issues, guardrails }`** (plus `coverage` for the playbook one). `contractType` is what enables the [clause-guardrail](h9-guardrails.md) fold: `issues` come back `category`-tagged, with a synthetic `compliance` issue appended for any missed hard guardrail failure. A throw → `500 { error }`.
+6. `reanalyse/route.ts:66` — `DELETE FROM risk_clauses WHERE contract_id = $1 AND status = 'pending'` — **`replaced` and `dismissed` rows are kept.**
+7. `reanalyse/route.ts:69-95` — if `issues.length > 0`, one bulk `INSERT INTO risk_clauses (contract_id, type, clause, passage, issue, suggestion, sort_order, status, reference, playbook_rule_id, verdict, category)` — **`COLS = 12` value columns per row** (was 11; `:70`), `status='pending'`, `sort_order = i`, `reference` / `rule_id` / `verdict` / `category` from the analysis.
+8. `reanalyse/route.ts:~97` — `UPDATE contracts SET total_issues = $1, issues_fixed = 0, playbook_id = $2 WHERE id = $3` (`$2` = `pb.playbook.id` when a playbook was used, else `null`). ⚠ **`issues_dismissed` is not touched; `risk_level` is not recomputed.**
+9. `reanalyse/route.ts:105-129` — build `clauses[]` from the inserted rows (id/type/clause/passage/issue/suggestion + optional reference/playbook_rule_id/verdict/**category** — **no `source` field**); respond `{ clauses, guardrails }` or `{ clauses, coverage, guardrails, playbook }`.
+10. `page.tsx:864-877` — `rateLimitNote` / `!res.ok` handling; on success `setClauses(data.clauses)`, `setFixedCount(0)`, `setActiveCardId(null)`; `setCoverage(Array.isArray(data.coverage) ? data.coverage : [])`; **`setGuardrails(data.guardrails ?? null)`** (`:876`); `if (data.playbook?.id) setPlaybookId(data.playbook.id)`.
+11. `page.tsx:1311-1314` — when `guardrails` is set, `<GuardrailStrip report={guardrails} />` renders in a bordered strip directly above the Quill host ([H9](h9-guardrails.md#ui)).
 
-**4 · Database effects** — `DELETE` of pending `risk_clauses`, bulk `INSERT` of new ones, one `contracts` UPDATE (`total_issues`, `issues_fixed→0`, `playbook_id`). Three statements, **no transaction** — a failure after the `DELETE` leaves the contract with **no pending clauses**. `coverage` is **not persisted** (there is no coverage table, [H6](h6-database-schema.md#tables)).
+**4 · Database effects** — `DELETE` of pending `risk_clauses`, bulk `INSERT` of new ones (**incl. `category`**), one `contracts` UPDATE (`total_issues`, `issues_fixed→0`, `playbook_id`). Three statements, **no transaction** — a failure after the `DELETE` leaves the contract with **no pending clauses**. `coverage` and the `guardrails` report are **not persisted** (no coverage table, and `guardrails` has no column — [H6](h6-database-schema.md#tables), [H9](h9-guardrails.md#category)). ⚠ `db/009` must be applied to prod for the `category` column to exist — until then this INSERT fails there.
 
-**5 · External calls** — Gemini via `analyseContract` / `analyseContractWithPlaybook` — model pin, `maxTokens`, and the `slice(0, 200_000)` (plain) / `slice(0, 188_000)` (playbook) input caps are in [H5](h5-llm-layer.md#token-caps) / [H5](h5-llm-layer.md#max-chars); the playbook rule-block mechanism is [F5](f-playbooks.md#f5).
+**5 · External calls** — Gemini via `analyseContract` / `analyseContractWithPlaybook` — model pin, `maxTokens`, and the `slice(0, 200_000)` (plain) / `slice(0, 188_000)` (playbook) input caps are in [H5](h5-llm-layer.md#token-caps) / [H5](h5-llm-layer.md#max-chars); the playbook rule-block mechanism is [F5](f-playbooks.md#f5). The guardrail check is **pure** — no model call ([H9](h9-guardrails.md)).
 
-**6 · End state** — The panel shows a fresh set of pending findings; `fixedCount` back to 0; any previously `replaced` / `dismissed` clauses persist in the DB (and dismissed ones reappear in the collapsed section on reload). `contracts.playbook_id` records the playbook used (or null). `coverage` lives only in React state until reload ([C15](#c15)).
+**6 · End state** — The panel shows a fresh set of pending findings, each with a `category`; `fixedCount` back to 0; the `GuardrailStrip` above the editor reflects `guardrails` (red/amber/green). Any previously `replaced` / `dismissed` clauses persist in the DB (and dismissed ones reappear in the collapsed section on reload). `contracts.playbook_id` records the playbook used (or null). `coverage`, `guardrails` and the strip live only in React state until reload — a reload has no `category` either, since `GET /api/contracts/[id]` doesn't select it ([C15](#c15), [H9](h9-guardrails.md#category)).
 
 **7 · Failure modes**
 
@@ -385,9 +400,11 @@ POST /api/contracts/{id}/reanalyse · auth: proxy-gated + owns* · limit: reanal
 |---------|------------------|-----------|----------|
 | Guest / rate-limited | 401 / 429 | "Couldn't re-run the analysis…" / limit toast (`:789-792`) | old clauses stay (nothing deleted yet) |
 | Analysis throws | `500` before the `DELETE` | error toast | old clauses intact |
-| `DELETE` ok, `INSERT` throws | `500` (`:94-96`) | error toast | ⚠ **all pending clauses gone, none re-inserted** — panel empties on next reload |
-| `contractType` is an upload code (`lease`) | `resolvePlaybookForAnalysis` can't match the display-name column → plain path even if a default playbook exists | plain re-analysis | — |
-| Playbook resolves | `{ clauses, coverage, playbook }` | verdict chips + coverage in the Playbook tab | `playbook_id` persisted; `coverage` not |
+| `DELETE` ok, `INSERT` throws | `500` | error toast | ⚠ **all pending clauses gone, none re-inserted** — panel empties on next reload |
+| `db/009` not applied on prod | `INSERT` references a non-existent `category` column → throws → the row above | error toast | ⚠ same — pending clauses wiped |
+| Guardrail hard-fails | a `compliance` issue is injected into `clauses`; `GuardrailStrip` goes red | an extra high-severity finding + the red strip | persisted as a `risk_clauses` row (`category='compliance'`); the strip is in-memory |
+| `contractType` is an upload code (`lease`) | `resolvePlaybookForAnalysis` can't match the display-name column → plain path; guardrails also see `contractType !== "Lease Agreement"` → **empty policy, `ok: true`** | plain re-analysis, no guardrail findings | — |
+| Playbook resolves | `{ clauses, coverage, guardrails, playbook }` | verdict chips + coverage + strip | `playbook_id` + per-clause `category` persisted; `coverage` / `guardrails` not |
 | Dismissed clauses + re-analyse | only `pending` deleted | dismissed clauses untouched | ⚠ `issues_dismissed` still counts them but new findings may duplicate the same topic |
 | Long contract | input truncated per [H5](h5-llm-layer.md#max-chars) | findings on a partial doc | tail unreviewed |
 
@@ -406,12 +423,13 @@ sequenceDiagram
   API->>PG: resolvePlaybookForAnalysis(userId, contractType, playbookId?)
   API->>GM: analyseContract[WithPlaybook] (see H5 / F5)
   GM-->>API: issues (+ coverage)
+  API->>API: applyGuardrails — tag category, inject missed hard failures (pure, H9)
   API->>PG: DELETE risk_clauses WHERE contract_id=$1 AND status='pending'
-  API->>PG: INSERT risk_clauses (bulk, 11 cols, status='pending')
+  API->>PG: INSERT risk_clauses (bulk, 12 cols incl. category, status='pending')
   API->>PG: UPDATE contracts SET total_issues=$1, issues_fixed=0, playbook_id=$2
   Note over API,PG: three statements, no transaction
-  API-->>B: { clauses [, coverage, playbook] }
-  B->>B: setClauses ; setFixedCount(0) ; setCoverage
+  API-->>B: { clauses, guardrails [, coverage, playbook] }
+  B->>B: setClauses ; setFixedCount(0) ; setCoverage ; setGuardrails
 ```
 
 **9 · Observability notes**
@@ -424,8 +442,9 @@ sequenceDiagram
 > | C14-O2 | Path (plain vs playbook), delete count, insert count all unlogged | NO-LOG | `console.info("[reanalyse]", { playbook: usePlaybook, deleted, inserted })` — tier 0 |
 > | C14-O3 | `language` silently forced to `de` (client never sends it) | THIN-LOG | send `language` from the client, or log the default — tier 0 |
 > | C14-O4 | `issues_dismissed` / `risk_level` never reconciled after re-analyse | NO-METRIC | recompute `risk_level` in step 8; decide dismissed-clause policy — tier 1 |
+> | C14-O5 | Guardrail outcome (`ok`, hard-failure count, injected findings) not logged — the #8 signal | NO-LOG | see [H9-O1](h9-guardrails.md) / [H9-O2](h9-guardrails.md) — tier 0 |
 
-**10 · See also** — [B3](b-getting-a-contract-in.md#b3) / [B4](b-getting-a-contract-in.md#b4) (the shared analysis functions), [F5](f-playbooks.md#f5) (playbook prompt injection), [C15](#c15) (the Playbook tab that consumes `coverage`), [H5](h5-llm-layer.md).
+**10 · See also** — [B3](b-getting-a-contract-in.md#b3) / [B4](b-getting-a-contract-in.md#b4) (the shared analysis functions), [H9](h9-guardrails.md) (the clause-guardrail fold + `category` + the `GuardrailStrip`), [F5](f-playbooks.md#f5) (playbook prompt injection), [C15](#c15) (the Playbook tab that consumes `coverage`), [H5](h5-llm-layer.md).
 
 ---
 
@@ -514,7 +533,9 @@ sequenceDiagram
 
 ## <a id="c16"></a>C16 — Export DOCX / PDF (client-side, lazy)
 
-**0 · TL;DR** — The "Export" menu offers Word / PDF. Both dynamic-`import()` `@/lib/export-contract`, which flattens the current Quill Delta to structured lines and then lazily `import()`s `docx` or `jspdf` to build the file and trigger a browser download. **No network, no server, no auth.**
+**0 · TL;DR** — The "Export" menu offers Word / PDF. Both dynamic-`import()` `@/lib/export-contract`, which flattens the current Quill Delta to structured lines and then lazily `import()`s `docx` or `jspdf` to build the file and trigger a browser download. Both formats now **honour the curated typographic controls** (issue #10) — font family, size, colour, alignment, indent, line-height, strike, super/subscript, blockquote and code block — not just headings/bold/italic/underline/lists. **No network, no server, no auth.**
+
+> _Partial re-verify @ `f40b569`: `export-contract.ts` + `delta-text.ts` now carry the #10 formats through to DOCX/PDF (`pxToPt`, `hex6`, `DOCX_FONT` map); the lazy-load + `triggerDownload` mechanics are unchanged from `bf4d660`._
 
 **1 · Entry point** — `src/app/review/page.tsx:1020-1058` — the Export button toggles `exportOpen`; the menu (`:1030-1057`) has two items. On click: `setExporting(true)`, `const { exportContract } = await import("@/lib/export-contract")` (`:1043`), `await exportContract(quill.getContents(), fileName, fmt)` (`:1044`).
 
@@ -523,7 +544,7 @@ sequenceDiagram
 **3 · Trace** — pure client:
 1. `page.tsx:1043-1044` — lazy-import `export-contract`, call `exportContract(delta, fileName, fmt)`.
 2. `export-contract.ts:102-108` — `exportContract`: `lines = deltaToLines(delta)`; `title = name || "Contract"`.
-3. `delta-text.ts:16-57` — `deltaToLines` walks `delta.ops`, splitting on `\n`, carrying `bold`/`italic`/`underline` per run and `header` (1–3) / `list` (`bullet`/`ordered`) per line, trimming leading/trailing blank lines. (Embeds are skipped — contracts are text.)
+3. `delta-text.ts` — `deltaToLines` walks `delta.ops`, splitting on `\n`, carrying per **run** `bold`/`italic`/`underline`/`strike`/`script` (super/sub) + `size`/`color`/`background`/`font`, and per **line** `header` (1–3) / `list` (`bullet`/`ordered`) / `align` / `indent` / `lineheight` / `blockquote` / `code-block`, trimming leading/trailing blank lines. (Embeds are skipped — contracts are text.) `export-contract.ts` maps these: `pxToPt("18px")→pt`, `hex6` normalises Quill colours to `RRGGBB`, `DOCX_FONT = { serif: "Georgia", mono: "Courier New" }`.
 4. `export-contract.ts:109-110` — branch: `format === "docx"` → `exportDocx(lines, title, safeName(name, "docx"))`; else `exportPdf(…, "pdf")`. `safeName` (`:20-23`) strips non-`\p{L}\p{N} _.-` chars, falls back to `"contract"`.
 5a. `export-contract.ts:25-63` — `exportDocx`: `const { Document, Packer, Paragraph, TextRun, HeadingLevel } = await import("docx")`; map lines → `Paragraph`s (heading level, bullet/decimal numbering, bold/italic/underline runs); `Packer.toBlob(doc)` → `triggerDownload`.
 5b. `export-contract.ts:65-99` — `exportPdf`: `const { jsPDF } = await import("jspdf")`; A4, 56 pt margin, Times; `splitTextToSize` wrapping, manual page breaks; headings and `•` bullets sized by line; `doc.output("blob")` → `triggerDownload`.
@@ -535,7 +556,7 @@ sequenceDiagram
 **4 · Database effects** — **None.**
 **5 · External calls** — **None.** `docx` / `jspdf` are bundled and code-split, loaded on first export.
 
-**6 · End state** — A `.docx` or `.pdf` file downloaded to the user's machine, reflecting the current editor content (including any green fix highlights' *text*, but not their colour — formatting is limited to headings / bold / italic / underline / lists). No trace anywhere.
+**6 · End state** — A `.docx` or `.pdf` file downloaded to the user's machine, reflecting the current editor content and the curated typographic formats (font / size / colour / alignment / indent / line-height / strike / super-sub / blockquote / code). The green `--mark-applied` tracked-change highlight is stored as the literal string `background: "var(--mark-applied)"`, which `hex6` can't parse → it's dropped; the highlighted *text* still exports. No trace anywhere.
 
 **7 · Failure modes**
 

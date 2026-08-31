@@ -146,50 +146,65 @@ sequenceDiagram
 
 ---
 
-## <a id="g3"></a>G3 — Stat tiles + charts
+## <a id="g3"></a>G3 — Stat tiles (dashboard) + portfolio charts (`/risk`)
 
-**0 · TL;DR** — The 4 stat tiles are computed from the loaded contracts. ⚠ The 3 chart series below them (`documentsData` / `fixesData` / `riskData`) are **literal hardcoded arrays** and never recomputed — the dashboard's charts show six months of history that does not exist.
+**0 · TL;DR** — The 4 stat tiles on `/dashboard` are computed from the loaded contracts. The three trend charts **moved out to their own route, `/risk` ("Risk dashboard")**, and — unlike before — their series are now **derived from real data**: `AnalyticsCharts` buckets `contracts` by `created_at` into the last 6 calendar months. Only the risk chart's parenthetical legend counts remain current-state rather than time-series.
 
-**1 · Entry point** — `src/app/(workspace)/dashboard/page.tsx` render body. Derived values `:256-267`; chart state `:270-294`; rendering `:485-564`.
+> _Re-verify @ `f40b569`: the charts moved from `dashboard/page.tsx` to `src/app/(workspace)/risk/page.tsx` + `src/components/dashboard/analytics-charts.tsx`; the hardcoded `documentsData`/`fixesData`/`riskData` arrays are gone, replaced by a `useMemo` bucketing pass; the sidebar `INSIGHTS_NAV` "Risk dashboard" entry lost its `soon: true` badge. The dashboard tiles are unchanged from `bf4d660`._
 
-**2 · Preconditions** — Contracts loaded ([G2](#g2)). Pure client — no network, no DB write.
+**1 · Entry point**
+- **Tiles:** `src/app/(workspace)/dashboard/page.tsx` render body — derived values + tile rendering (the chart state/JSX that used to sit here is deleted).
+- **Charts:** `/risk` → `RiskDashboardPage` (`src/app/(workspace)/risk/page.tsx`) — `fetch("/api/contracts")` → `<AnalyticsCharts contracts={contracts} />`. Sidebar `INSIGHTS_NAV` link (`src/components/sidebar.tsx:39`).
+
+**2 · Preconditions** — Tiles: contracts loaded ([G2](#g2)). Charts: signed in; `/risk` does its own `GET /api/contracts`. Both pure client past that fetch — no DB write.
 
 **3 · Trace**
-1. **Tiles** — `:256-262`, rendered `:485-490`:
-   - `totalDocuments = contracts.length` → tile **"Documents"**.
-   - `highRiskCount = contracts.filter(c => c.risk_level === "high" && !isResolved(c)).length` → tile **"Flagged, high"** (`tone="risk"`).
-   - `totalFixes = contracts.reduce((s, c) => s + c.issues_fixed, 0)` → tile **"Suggestions applied"**.
-   - `openIssues = contracts.reduce((s, c) => s + Math.max(0, c.total_issues - c.issues_fixed - (c.issues_dismissed ?? 0)), 0)` → tile **"Open issues"**.
-2. `currentRisk = { high, medium, low }` counts by `risk_level` (`:263-267`) — feeds **only the legend counts** on the portfolio chart (`:539-542`: `High (${currentRisk.high})` …), not the plotted lines.
-3. ⚠ **Chart series** — `documentsData` (`:270-276`), `fixesData` (`:278-285`), `riskData` (`:287-294`): constant arrays for `Oct`…`Mar`, held via `useState`. The setters `_setDocumentsData` / `_setFixesData` / `_setRiskData` **are never called**. Rendered through `ChartContainer` (`src/components/ui/chart.tsx`, a Recharts wrapper) as a `BarChart` "Documents scanned" (`:494-505`), an `AreaChart` "Suggestions applied" (`:507-531`), and a `LineChart` "Portfolio risk — last 6 months" (`:535-564`).
+1. **Tiles** (dashboard):
+   - `totalDocuments = contracts.length` → **"Documents"**.
+   - `highRiskCount = contracts.filter(c => c.risk_level === "high" && !isResolved(c)).length` → **"Flagged, high"**.
+   - `totalFixes = contracts.reduce((s, c) => s + c.issues_fixed, 0)` → **"Suggestions applied"**.
+   - `openIssues = contracts.reduce((s, c) => s + Math.max(0, c.total_issues - c.issues_fixed - (c.issues_dismissed ?? 0)), 0)` → **"Open issues"**.
+2. **`AnalyticsCharts`** (`analytics-charts.tsx`) — `useMemo` over `contracts`: build 6 month buckets (`new Date(now.getFullYear(), now.getMonth() - (5-i), 1)`), key `"YYYY-M"`; for each contract, `new Date(c.created_at)` → find bucket (skip if outside the window or unparseable) → `docs += 1`, `fixes += c.issues_fixed ?? 0`, and `high/medium/low += 1` by `risk_level`. Emits `documentsData` / `fixesData` / `riskData`.
+3. `currentRisk = { high, medium, low }` — **current** counts by `risk_level`, feeds only the risk-chart legend labels (`High (${currentRisk.high})` …), not the plotted lines.
+4. Rendered via `ChartContainer` (Recharts wrapper): `BarChart` "Documents scanned", `AreaChart` "Suggestions applied", `LineChart` "Portfolio risk, last 6 months". Colours read live from CSS vars so the charts re-theme with the toggle.
 
-**4 · Database effects** — None. **5 · External calls** — None.
+**4 · Database effects** — None. **5 · External calls** — `/risk` does one `GET /api/contracts`; otherwise none.
 
-**6 · End state** — Tiles reflect the real contract set; the three chart panels reflect fixed fiction; only the risk chart's parenthetical legend counts are real.
+**6 · End state** — Tiles reflect the real contract set. The `/risk` charts reflect a real 6-month rollup keyed on `created_at` (fixes are attributed to the contract's creation month — the only timestamp `AnalyticsContract` carries, so a fix applied months later still lands in the creation bucket). The risk-chart legend numbers are live totals, not the last plotted point.
 
-**7 · Failure modes** — Nothing breaks. The exposure is interpretive: this is the workflow where the set-wide "visibility" theme bites hardest — a user reads a trend that was authored once as placeholder data, and nothing on screen marks it apart from the honest tiles beside it.
+**7 · Failure modes**
+
+| Trigger | Behaviour | User sees | Survives |
+|---------|-----------|-----------|----------|
+| `/risk` `GET /api/contracts` fails | `contracts` stays `[]` | "Loading…" resolves to empty charts (all-zero series) | n/a |
+| Contract `created_at` unparseable | that contract is skipped in the bucketing | slight undercount | n/a |
+| All contracts older than 6 months | every bucket zero | flat charts | n/a — honestly empty, no longer fiction |
+| `issues_fixed` counter drift ([H6](h6-database-schema.md)) | the "Suggestions applied" area inherits the drift | slightly wrong totals | n/a |
 
 **8 · Sequence diagram**
 
 ```mermaid
 flowchart TD
-  C[contracts state] -->|reduce / filter :256-267| T[4 stat tiles]
-  C -->|count by risk_level| LG[risk chart legend counts]
-  K1["documentsData literal :270"] --> BAR["BarChart 'Documents scanned'"]
-  K2["fixesData literal :278"] --> AR["AreaChart 'Suggestions applied'"]
-  K3["riskData literal :287"] --> LN["LineChart 'Portfolio risk'"]
-  K1 -. _setDocumentsData never called .-> BAR
+  C1[dashboard: contracts state] -->|reduce / filter| T[4 stat tiles]
+  R["/risk: GET /api/contracts"] --> AC[AnalyticsCharts]
+  AC -->|useMemo: bucket by created_at, 6 months| S["documentsData / fixesData / riskData"]
+  S --> BAR[BarChart 'Documents scanned']
+  S --> AR[AreaChart 'Suggestions applied']
+  S --> LN[LineChart 'Portfolio risk']
+  AC -->|count by risk_level now| LG[risk-chart legend counts]
 ```
 
 **9 · Observability notes**
-> **What you can see today.** Nothing. No real time-series is computed anywhere, so there is nothing to emit.
-> **What you can't.** Actual documents-per-month, fixes-per-month, or risk-mix-over-time — the quantities the charts pretend to show.
+> **What you can see today.** Nothing — pure client. The series are now real, but no event is emitted when `/risk` renders or how the buckets came out.
+> **What you can't.** `/risk` page views. Whether the 6-month window is mostly empty for a given user (the "flat charts" case). Fix-attribution skew (fixes bucketed to creation month, not application month).
 >
 > | # | Blind spot | Class | Cheapest fix |
 > |---|-----------|-------|--------------|
-> | G3-O1 | The three trend series are placeholder constants presented as data | NO-METRIC | derive them from `contracts` (`created_at`, counters) or a `daily_contract_stats` rollup — tier 2; until then, label them clearly — tier 0 |
+> | G3-O1 | ~~Trend series are placeholder constants~~ **Resolved @ `f40b569`** — `AnalyticsCharts` now buckets real `created_at`. | — | — |
+> | G3-O2 | Fixes attributed to creation month, not the month applied | NO-METRIC | needs a per-fix timestamp (`risk_clauses.replaced_at` exists) or a rollup table — tier 2 |
+> | G3-O3 | Risk-chart legend shows live totals next to a 6-month line — mild mixed-axis confusion | NO-METRIC | label the legend "now" or plot the current point — tier 0 |
 
-**10 · See also** — [G2](#g2) (the state these read), [B5](b-getting-a-contract-in.md#b5) (`total_issues` / `issues_fixed` semantics).
+**10 · See also** — [G2](#g2) (the state the tiles read), [B5](b-getting-a-contract-in.md#b5) (`total_issues` / `issues_fixed` semantics), [Z6](z-dead-and-unwired.md) (the other still-`soon` insights nav items).
 
 ---
 

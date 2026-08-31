@@ -157,7 +157,9 @@ sequenceDiagram
 
 ## <a id="b3"></a>B3 — `POST /api/analyse` — plain (no playbook)
 
-**0 · TL;DR** — `/analysis` posts the extracted text to `/api/analyse`, which runs one Gemini structured-output call under German law and returns 5–8 risk clauses; **nothing is persisted here**.
+**0 · TL;DR** — `/analysis` posts the extracted text to `/api/analyse`, which runs one Gemini structured-output call under German law and returns 5–8 risk clauses, each tagged `compliance` / `negotiation`, plus a deterministic [clause-guardrail](h9-guardrails.md) report; **nothing is persisted here**.
+
+> _Partial re-verify @ `f40b569`: the clause-guardrail fold (`analyseContract` return shape, the `guardrails` response key, `category` tags) is current; the rest of this section is at `bf4d660`._
 
 **1 · Entry point** — `src/app/analysis/page.tsx:159-166` — step 2 of `run()`. Handler: `src/app/api/analyse/route.ts:9`.
 
@@ -167,24 +169,26 @@ sequenceDiagram
 ```
 POST /api/analyse · auth: proxy-gated · limit: analyse 20/h · 60/d
   req  { text, contractType, language?, playbookId? }
-  res  { clauses: [{ id, type, clause, passage, issue, suggestion, reference? }] }
+  res  { clauses: [{ id, type, clause, passage, issue, suggestion, reference?, category }],
+         guardrails: GuardrailReport }
 ```
 1. `route.ts:11` — `enforceRateLimit(req, "analyse")`.
 2. `:14-20` — parse; `400 "No text provided"` if `text` is blank.
 3. `:26-31` — `currentUserId()`; `resolvePlaybookForAnalysis(userId, contractType ?? "", playbookId ?? null)` ([F5](f-playbooks.md#f5)). For this section it returns `null` or a playbook with 0 rules.
-4. `:48` — `analyseContract(text, lang)` (`src/lib/analysis.ts:318`):
+4. `:50-53` — `analyseContract(text, { language: lang, contractType })` (`src/lib/analysis.ts:430`) → `{ issues, guardrails }`:
    - `reviewPrompt(lang)` (`:120`) — German Fachanwalt persona; assess every clause against §§ 305–310 BGB (AGB-Kontrolle) + the mietrechtliche Spezialnormen; return 5–8 issues, most severe first, each `issue` citing the norm inline, optional `reference` field.
    - prompt + `text.slice(0, 200_000)` (`MAX_CHARS`, `:304`).
    - `askLLM({ maxTokens: 8192, prompt, responseSchema: RESPONSE_SCHEMA })` ([H5](h5-llm-layer.md)).
-   - `coerceIssues(extractJson(responseText))` — drop malformed entries. **Up to 2 attempts**; each attempt is itself a full `askLLM` call (with `askLLM`'s own 3 retries → up to 6 Gemini calls). Both empty → `AppError(422, "analysis_failed")`.
-5. `:49` — map issues to `{ ...issue, id: "clause-<i>-<Date.now()>" }` — **temp ids**, replaced by real DB ids in [B5](#b5).
-6. `:50` — `NextResponse.json({ clauses })`.
+   - `coerceIssues(extractJson(responseText))` — drop malformed entries. **Up to 2 attempts**; each attempt is itself a full `askLLM` call (with `askLLM`'s own 3 retries → up to 6 Gemini calls). Both empty → `AppError(422, "analysis_failed")` — **unless** a guardrail hard-fails, in which case the guardrail-only issues are returned instead of throwing (`analysis.ts:459-460` / `:474-475`).
+   - `applyGuardrails(issues, { contractText, contractType, language })` (`analysis.ts:325`) — the [clause-guardrail](h9-guardrails.md) fold: tag each issue `category: "compliance" | "negotiation"`, and **append** a synthetic `compliance` issue for any hard guardrail failure the model missed. `fields` (rent/deposit numbers) are **not** plumbed here — numeric caps fall back to `amountNear` text parsing.
+5. `route.ts:54` — map issues to `{ ...issue, id: "clause-<i>-<Date.now()>" }` — **temp ids**, replaced by real DB ids in [B5](#b5).
+6. `route.ts:55` — `NextResponse.json({ clauses, guardrails })`.
 
-**4 · Database effects** — **None.** `/api/analyse` is stateless.
+**4 · Database effects** — **None.** `/api/analyse` is stateless. (The `category` tag and the `guardrails` report are computed and returned but not persisted here — and [B5](#b5)'s save drops `category`; see [H9](h9-guardrails.md#category).)
 
-**5 · External calls** — Gemini via `askLLM`. Model `gemini-3.6-flash`, `maxTokens 8192`, input `slice(0, 200_000)`, structured output. See [H5](h5-llm-layer.md#token-caps).
+**5 · External calls** — Gemini via `askLLM`. Model `gemini-3.6-flash`, `maxTokens 8192`, input `slice(0, 200_000)`, structured output. The guardrail check is **pure** — no model call. See [H5](h5-llm-layer.md#token-caps), [H9](h9-guardrails.md).
 
-**6 · End state** — `{ clauses }` in the page's `run()` closure; `steps[1]` complete; progress → 75 %.
+**6 · End state** — `{ clauses, guardrails }` in the page's `run()` closure; `steps[1]` complete; progress → 75 %. ⚠ The `/analysis` page reads `clauses` only — **`guardrails` is discarded client-side** (`GuardrailStrip` renders only after a review-screen re-analyse, [C14](c3-review-ai-and-output.md#c14)).
 
 **7 · Failure modes**
 
@@ -234,7 +238,9 @@ sequenceDiagram
 
 ## <a id="b4"></a>B4 — `POST /api/analyse` — playbook-aware
 
-**0 · TL;DR** — When a playbook resolves, `/api/analyse` runs `analyseContractWithPlaybook` instead: the prompt gets a `PRÜFMASSSTAB` rule block, each finding carries a `rule_id` + `verdict`, and the response adds a `coverage` array and a `playbook` stub — none of which is persisted by this route.
+**0 · TL;DR** — When a playbook resolves, `/api/analyse` runs `analyseContractWithPlaybook` instead: the prompt gets a `PRÜFMASSSTAB` rule block, each finding carries a `rule_id` + `verdict` + a `compliance`/`negotiation` `category`, and the response adds a `coverage` array, a `guardrails` report, and a `playbook` stub — none of which is persisted by this route.
+
+> _Partial re-verify @ `f40b569`: the `contractType` arg, the `guardrails` key and `category` tags are current; the rest is at `bf4d660`._
 
 **1 · Entry point** — same as [B3](#b3); the branch at `src/app/api/analyse/route.ts:34`.
 
@@ -246,22 +252,23 @@ sequenceDiagram
 ```
 POST /api/analyse · auth: proxy-gated · limit: analyse 20/h · 60/d
   req  { text, contractType, language?, playbookId }
-  res  { clauses:[{…, playbook_rule_id?, verdict?, reference?}], coverage:[…], playbook:{id,name,is_approved} }
+  res  { clauses:[{…, playbook_rule_id?, verdict?, reference?, category}], coverage:[…],
+         guardrails: GuardrailReport, playbook:{id,name,is_approved} }
 ```
 1. `route.ts:34` — `pb && pb.rules.length > 0` → the playbook branch.
-2. `:35-38` — `analyseContractWithPlaybook(text, { language, rules: pb.rules.map(toPromptRule) })` (`src/lib/analysis.ts:366`):
+2. `:35-38` — `analyseContractWithPlaybook(text, { language, rules: pb.rules.map(toPromptRule), contractType })` (`src/lib/analysis.ts:489`) → `{ issues, coverage, guardrails }`:
    - `reviewPrompt(lang, rules)` (`:120`) — inserts `renderPlaybookBlock(rules)` (`:58`, ≤ `MAX_RULE_CHARS = 12_000` chars, drop highest `sort_order` first + truncation note) between the standard rules and the `Document:` marker; the "return 5–8 issues" line becomes "one issue per breached rule … also flag mandatory-law violations".
    - `text.slice(0, 200_000 - 12_000)` (`:374`).
    - `askLLM({ maxTokens: 12288, responseSchema })` — schema now has per-issue `rule_id` + `verdict` and top-level `missing_topics`.
-   - `coerceIssues(parsed, rules)` (drop `rule_id`s not in the set) + `coerceCoverage(parsed, rules)` (`:254` — every `is_required` rule with no matching finding → `verdict: "missing"`).
+   - `coerceIssues(parsed, rules)` (drop `rule_id`s not in the set) → `applyGuardrails(…, { contractType, hasRules: true })` (`analysis.ts:524`): tag every finding `category` (`compliance` when it cites a guardrail statute or maps to a guardrail-tier topic, else `negotiation` since a playbook drove the review) + inject a `compliance` finding for any missed hard guardrail failure. Then `coerceCoverage(parsed, rules)` (`:254` — every `is_required` rule with no matching finding → `verdict: "missing"`).
 3. `:39` — temp-id the clauses.
-4. `:40-44` — return `{ clauses, coverage, playbook: { id, name, is_approved } }`.
+4. `:40-44` — return `{ clauses, coverage, guardrails, playbook: { id, name, is_approved } }`.
 
 **4 · Database effects** — **None.** `coverage` is returned to the client and **never stored** — there is no coverage table ([H6](h6-database-schema.md)). The review screen keeps it in memory until reload.
 
 **5 · External calls** — Gemini, `maxTokens 12288`, input `slice(0, 188_000)`. See [H5](h5-llm-layer.md).
 
-**6 · End state** — `{ clauses, coverage, playbook }` in the caller. On the [B5](#b5) save, `playbook_id`, and per-clause `reference` / `playbook_rule_id` / `verdict`, are persisted; `coverage` is not.
+**6 · End state** — `{ clauses, coverage, guardrails, playbook }` in the caller. On the [B5](#b5) save, `playbook_id`, and per-clause `reference` / `playbook_rule_id` / `verdict`, are persisted; `coverage`, `guardrails` and the per-clause `category` are **not** (`POST /api/contracts` has no `category` column in its insert — see [H9](h9-guardrails.md#category)).
 
 **7 · Failure modes** — as [B3](#b3), plus: a `rule_id` the model invents that isn't in the set is silently dropped by `coerceIssues`; a rule block that overflows 12 000 chars silently drops its lowest-priority rules.
 
@@ -374,9 +381,11 @@ sequenceDiagram
 
 ## <a id="b6"></a>B6 — Generate a non-lease contract (plain LLM)
 
-**0 · TL;DR** — The Generate modal collects parties + key terms, `/api/generate` runs one ungrounded Gemini call under German law, the dashboard saves a bare contract (no clauses), and jumps to `/review?…&mode=create`.
+**0 · TL;DR** — The Generate modal collects parties + key terms, `/api/generate` runs one ungrounded Gemini call under German law, checks the draft against the [clause guardrails](h9-guardrails.md) (one bounded LLM repair pass on a hard failure), the dashboard saves a bare contract (no clauses), and jumps to `/review?…&mode=create`.
 
-**1 · Entry point** — `/dashboard`, the **Generate** button or New ▸ "Generate with AI" (`?generate=1`). `<CreateContractModal>` (`src/components/create-contract-modal.tsx`); on submit → `dashboard/page.tsx` `onGenerate` (`:406-480`). Handler: `src/app/api/generate/route.ts:104`.
+> _Partial re-verify @ `f40b569`: the prompt restructure (CLIENT REQUIREMENTS vs STARTING STRUCTURE), the guardrail gate + repair pass, and the `guardrails` response key are current; line numbers and the save/redirect steps are re-checked, the diagram is updated. Rest at `bf4d660`._
+
+**1 · Entry point** — `/dashboard`, the **Generate** button or New ▸ "Generate with AI" (`?generate=1`). `<CreateContractModal>` (`src/components/create-contract-modal.tsx`); on submit → `dashboard/page.tsx` `onGenerate` (`:406-480`). Handler: `src/app/api/generate/route.ts:172`.
 
 **2 · Preconditions** — Signed in ([gated](h1-auth-and-ownership.md#gate)); saving also needs a session. `contractType` is a **display name** here (`"NDA"`, `"MSA"`, …, `src/lib/contract-types.ts`), not the upload codes. `isGermanResidentialLease` is false (anything but `"Lease Agreement"`).
 
@@ -384,22 +393,23 @@ sequenceDiagram
 ```
 POST /api/generate · auth: proxy-gated · limit: generate 15/h · 40/d
   req  { contractType, party1, party2, language?, keyTerms?, templateId?, values? }
-  res  { text, templateId }
+  res  { text, guardrails: GuardrailReport, templateId }
 ```
-1. `generate/route.ts:106` — `enforceRateLimit("generate")`.
-2. `:112` — `renderTemplateBody(body, language)` — `null` here (no `templateId`).
-3. `:116` — not a lease → the ungrounded branch (`:131-159`).
-4. `:132-138` — `structureBlock` empty (no template).
-5. `:139-158` — build the prompt: "senior German commercial contracts attorney … draft a complete `${contractType}` between `${party1}` and `${party2}` … respect AGB-Kontrolle §§ 305–310 BGB … no `[INSERT]` … return ONLY the contract text". English variant keeps German citations verbatim.
-6. `:160` — `askLLM({ prompt, maxTokens: 8192 })` — **no `responseSchema`**, plain text out.
-7. `:162` — `{ text, templateId: null }`.
-8. `dashboard/page.tsx:441-447` — if `!genRes.ok || !genData.text` → error toast, close modal, stop.
-9. `:450-461` — `POST /api/contracts { name, contract_type: contractType, extracted_text: genData.text, risk_level: "low", clauses: [] }` — **no analysis, no clauses, hardcoded `low`**. ⚠ `templateId` from the response is **not** forwarded.
-10. `:470-473` — `loadContracts()`, then `router.push('/review?contractId=<id>&file=<name>&type=<type>&mode=create')`.
+1. `generate/route.ts:177` — `enforceRateLimit("generate")`.
+2. `:183` — `guardrailFieldsOf(body)` → `{ baseRentEur?, operatingCostsEur?, depositEur? }` for the numeric guardrails.
+3. `:185` — `renderTemplateBody(body, language)` → `null` here (no `templateId`); the deterministic template fast path (`:193-206`) is skipped.
+4. `:224` — not a lease → the ungrounded `else` branch (`:224-268`). `clientBlock` (`:225-229`, only when `keyTerms`) = "CLIENT REQUIREMENTS (these take precedence over the starting structure, unless mandatory German law forbids it — then correct it and name the norm)"; `structureBlock` empty (no template).
+5. `:230-262` — build the prompt: "senior German commercial contracts attorney … draft a complete `${contractType}` between `${party1}` and `${party2}` … respect AGB-Kontrolle §§ 305–310 BGB … no `[INSERT]` … return ONLY the contract text". English variant keeps German citations verbatim.
+6. `:268` — `draftText = await askLLM({ prompt, maxTokens: 8192 })` — **no `responseSchema`**, plain text out.
+7. `:270-292` — **guardrail gate**: `evaluateGuardrails({ contractText: draftText, contractType, fields, language })`; if `!ok`, one `repairGuardrails` LLM pass (`:279`) then re-evaluate. A repair throw is caught + `console.error("[generate] guardrail repair failed:", :290)`; the draft still returns. For a non-lease type the policy is empty → `ok: true`, no-op (see [H9](h9-guardrails.md#policy)).
+8. `:293-298` — `{ text: draftText, guardrails, templateId: null }`.
+10. `dashboard/page.tsx:441-447` — if `!genRes.ok || !genData.text` → error toast, close modal, stop. ⚠ `genData.guardrails` is **not read** — the create flow discards it.
+11. `:450-461` — `POST /api/contracts { name, contract_type: contractType, extracted_text: genData.text, risk_level: "low", clauses: [] }` — **no analysis, no clauses, hardcoded `low`**. ⚠ `templateId` from the response is **not** forwarded.
+12. `:470-473` — `loadContracts()`, then `router.push('/review?contractId=<id>&file=<name>&type=<type>&mode=create')`.
 
-**4 · Database effects** — 1 `contracts` row with `total_issues = 0`, `issues_fixed = 0`, `risk_level = 'low'`, `quill_delta = null`, `extracted_text` = the draft. **Zero `risk_clauses`.** The review screen's clause panel is empty until the user runs [C14](c3-review-ai-and-output.md) (re-analyse).
+**4 · Database effects** — 1 `contracts` row with `total_issues = 0`, `issues_fixed = 0`, `risk_level = 'low'`, `quill_delta = null`, `extracted_text` = the draft. **Zero `risk_clauses`.** The guardrail report is not persisted anywhere. The review screen's clause panel is empty until the user runs [C14](c3-review-ai-and-output.md) (re-analyse).
 
-**5 · External calls** — Gemini via `askLLM`, `gemini-3.6-flash`, `maxTokens 8192`, **no input cap** (the prompt is party names + key terms, small), no structured output.
+**5 · External calls** — Gemini via `askLLM`, `gemini-3.6-flash`, `maxTokens 8192`, **no input cap** (the prompt is party names + key terms, small), no structured output. On a guardrail hard failure, **one extra `askLLM` call** — `repairGuardrails`, `maxTokens 8192`, body = the guardrail block + curated clause wording for the failing topics + the draft ([H9](h9-guardrails.md#wiring-generate)).
 
 **6 · End state** — Contract saved; `/review?…&mode=create` — `mode=create` enables the in-editor AI-edit affordance ([C11](c3-review-ai-and-output.md)). The draft arrives as Markdown; `setDocText` detects it and converts to Quill rich text ([C3](c1-review-document.md)).
 
@@ -426,7 +436,8 @@ sequenceDiagram
   API->>API: enforceRateLimit("generate")
   API->>GM: generateContent (plain prompt, maxTokens 8192)
   GM-->>API: contract text (Markdown)
-  API-->>B: { text, templateId: null }
+  API->>API: evaluateGuardrails(draft) — empty policy for non-lease → ok
+  API-->>B: { text, guardrails, templateId: null }
   B->>API: POST /api/contracts { extracted_text: text, risk_level:"low", clauses:[] }
   API-->>B: 201 { id }
   B->>B: router.push /review?contractId=id&mode=create
@@ -441,18 +452,21 @@ sequenceDiagram
 > | B6-O1 | No generation funnel (started / generated / saved) | NO-METRIC | 3 `console.info` calls in `onGenerate` — tier 0 |
 > | B6-O2 | Generate-ok-save-fail loses the draft with no trace | NO-LOG + SILENT-CATCH | log the draft length + save error; consider stashing `extracted_text` in `analysisStore` before the save — tier 0/1 |
 > | B6-O3 | `templateId` dropped between generate and save | NO-LOG | forward it into the `/api/contracts` body — tier 1 (fix) |
+> | B6-O4 | Guardrail gate: hard-failure detection + repair-pass outcome unlogged; `guardrails` response dropped client-side | NO-LOG + LEAK | see [H9-O1](h9-guardrails.md) / [H9-O4](h9-guardrails.md) |
 
-**10 · See also** — [B7](#b7) (the lease branch of the same route), [C11](c3-review-ai-and-output.md) (`mode=create` AI editing), [C14](c3-review-ai-and-output.md) (getting clauses onto a generated contract).
+**10 · See also** — [B7](#b7) (the lease branch of the same route), [H9](h9-guardrails.md) (the guardrail gate + repair pass), [C11](c3-review-ai-and-output.md) (`mode=create` AI editing), [C14](c3-review-ai-and-output.md) (getting clauses onto a generated contract).
 
 ---
 
 ## <a id="b7"></a>B7 — Generate a German residential lease (grounded RAG)
 
-**0 · TL;DR** — When `contractType === "Lease Agreement"`, `/api/generate` routes through the RAG pipeline: retrieve German tenancy-law context, draft a §1–§11 Wohnraummietvertrag grounded strictly in it, cite the statutes it used.
+**0 · TL;DR** — When `contractType === "Lease Agreement"`, `/api/generate` routes through the RAG pipeline: retrieve German tenancy-law context, draft a §1–§11 Wohnraummietvertrag grounded strictly in it, run it through the [clause guardrails](h9-guardrails.md) (Kaution ≤ 3 NKM, 12-month Betriebskosten deadline, § 573c notice … — one bounded LLM repair pass on a hard failure), cite the statutes it used.
 
-**1 · Entry point** — same modal/handler as [B6](#b6); `isGermanResidentialLease(body)` true (`src/app/api/generate/route.ts:38-40, 118`). The modal shows extra fields (address, Nettokaltmiete, Betriebskosten, Kaution) when `contractType === "Lease Agreement"`.
+> _Partial re-verify @ `f40b569`: the guardrail gate + repair pass, the `guardrails` response key, and the `rag/generate.ts` client-precedence prompt rewrite (MANDANTENVORGABEN over AUSGANGSSTRUKTUR) are current; line numbers re-checked. Rest at `bf4d660`._
 
-**2 · Preconditions** — Signed in. `propertyAddress` non-blank **and** `baseRentEur` finite `> 0` — else `AppError(400, "generate_missing_fields")` (`route.ts:69-75`). Requires the `rag_chunks` index to be loaded (`db/005` + `npm run rag:ingest` — [H4](h4-rag-pipeline.md); pending on prod per `MEMORY.md`).
+**1 · Entry point** — same modal/handler as [B6](#b6); `isGermanResidentialLease(body)` true (`src/app/api/generate/route.ts:38-40, 213`). The modal shows extra fields (address, Nettokaltmiete, Betriebskosten, Kaution) when `contractType === "Lease Agreement"`.
+
+**2 · Preconditions** — Signed in. `propertyAddress` non-blank **and** `baseRentEur` finite `> 0` — else `AppError(400, "generate_missing_fields")` (`route.ts:97-102`). Requires the `rag_chunks` index to be loaded (`db/005` + `npm run rag:ingest` — [H4](h4-rag-pipeline.md); pending on prod per `MEMORY.md`).
 
 **3 · Trace**
 ```
@@ -461,23 +475,25 @@ POST /api/generate · auth: proxy-gated · limit: generate 15/h · 40/d
          propertyAddress, baseRentEur, operatingCostsEur?, depositEur?, keyTerms? }
   res  { text, grounded, groundingRefs, retrievedDocs, templateId }
 ```
-1. `route.ts:106` — rate limit; `:112` — `renderTemplateBody` → `null` (no template).
-2. `:118` → `draftGermanLease(body, null)` (`:63-102`):
-   - `:65-71` — validate address + rent.
-   - `:75-92` — `generateGermanRentalContract({ landlord, tenant, propertyAddress, baseRentEur, operatingCostsEur?, depositEur?, keyTerms?, language }, { complete: askLLM })` ([H4](h4-rag-pipeline.md)):
+1. `route.ts:177` — rate limit; `:183` — `guardrailFieldsOf(body)`; `:185` — `renderTemplateBody` → `null` (no template); fast path (`:193-206`) skipped.
+2. `:213-215` → `draftGermanLease(body, templateBody)` (`:95-128`):
+   - `:97-102` — validate address + rent → `AppError(400, "generate_missing_fields")`.
+   - `:104-119` — `generateGermanRentalContract({ landlord, tenant, propertyAddress, baseRentEur, operatingCostsEur?, depositEur?, keyTerms?, language }, { complete: askLLM })` ([H4](h4-rag-pipeline.md)):
      - `buildQueries` → 6 fixed German sub-queries + conditional ones from `keyTerms`.
      - `retrieveMany(queries, { topK: 12 })` — per-query `embedOne(RETRIEVAL_QUERY)` + cosine `ORDER BY` against `rag_chunks`, round-robin merge.
-     - prompt: `RECHTSGRUNDLAGEN` (chunks) → `VERTRAGSDATEN` (the client's values).
+     - prompt (`src/lib/rag/generate.ts`): `RECHTSGRUNDLAGEN` (chunks) → **`MANDANTENVORGABEN`** (from `keyTerms`, "haben Vorrang vor der Vorlage, soweit zwingendes deutsches Recht gewahrt bleibt") → **`AUSGANGSSTRUKTUR`** (template body — now a *starting point*, not "VERBINDLICHE VERTRAGSSTRUKTUR … übernimm unverändert"; where the client's asks differ or ask for more, the model follows the client unless mandatory law forbids it) → `VERTRAGSDATEN` (the client's values; `keyTerms` no longer restated here).
      - `complete({ system: composeSystem(language), prompt, maxTokens: 8192 })` — Fachanwalt persona, "cite only the supplied Rechtsgrundlagen", §1–§11 structure, mandatory limits (Kaution ≤ 3 NKM, 12-month Betriebskosten deadline, § 573c notice periods).
-   - `:94-100` — `topScore = context[0].score ?? 0`; `grounded = topScore >= 0.35`; return `{ text, grounded, groundingRefs, retrievedDocs }`.
-3. `:120-123` — respond `{ ...result, templateId: null }`. `QuotaExhaustedError` from the RAG client → `AppError(503, "llm_busy")` (`:126-133`).
-4. Save + redirect: identical to [B6](#b6) steps 8–10 (`risk_level: "low"`, `clauses: []`).
+   - `:122-127` — `topScore = result.context[0]?.score ?? 0`; `grounded = topScore >= MIN_GROUNDING_SCORE (0.35)`; return `{ text, grounded, groundingRefs, retrievedDocs }`.
+3. `:215-219` — destructure into `draftText` + `leaseMeta`. `QuotaExhaustedError` from the RAG client → `AppError(503, "llm_busy")` (`:220-228`).
+4. `:270-292` — **guardrail gate** on `draftText`: `evaluateGuardrails({ contractText, contractType: "Lease Agreement", fields, language })` — the lease policy is **non-empty** here (7 rules). On `!ok`, one `repairGuardrails` LLM pass then re-evaluate; a repair throw is caught + logged, the draft still returns ([H9](h9-guardrails.md#wiring-generate)).
+5. `:293-298` — respond `{ text: draftText, guardrails, ...leaseMeta, templateId: null }`.
+6. Save + redirect: identical to [B6](#b6) steps 11–12 (`risk_level: "low"`, `clauses: []`).
 
-**4 · Database effects** — Read-only against `rag_chunks` / `rag_index_meta` during generation. Then 1 `contracts` row (as [B6](#b6)), 0 `risk_clauses`.
+**4 · Database effects** — Read-only against `rag_chunks` / `rag_index_meta` during generation. Then 1 `contracts` row (as [B6](#b6)), 0 `risk_clauses`. The guardrail report is not persisted.
 
-**5 · External calls** — Gemini embeddings (one `embedOne` per sub-query, batched) + one grounded `complete` (`maxTokens 8192`). `assertIndexFresh` throws if the store is stale/empty. See [H4](h4-rag-pipeline.md), [H5](h5-llm-layer.md).
+**5 · External calls** — Gemini embeddings (one `embedOne` per sub-query, batched) + one grounded `complete` (`maxTokens 8192`) + **one `repairGuardrails` `askLLM` call** if a hard guardrail fails (`maxTokens 8192`). `assertIndexFresh` throws if the store is stale/empty. See [H4](h4-rag-pipeline.md), [H5](h5-llm-layer.md), [H9](h9-guardrails.md).
 
-**6 · End state** — Contract saved. `groundingRefs` / `retrievedDocs` / `grounded` are in the response but the save flow **discards them** — nothing persists which statutes grounded the draft.
+**6 · End state** — Contract saved. `groundingRefs` / `retrievedDocs` / `grounded` / `guardrails` are in the response but the save flow **discards them** — nothing persists which statutes grounded the draft or whether the guardrails passed.
 
 **7 · Failure modes**
 
@@ -487,6 +503,8 @@ POST /api/generate · auth: proxy-gated · limit: generate 15/h · 40/d
 | Index empty / stale | `assertIndexFresh` throws → `errorResponse` 500 | generic message | nothing |
 | Top score < 0.35 | `grounded: false`; **still drafts** via the ungrounded path inside `generateGermanRentalContract` | a contract, unmarked | nothing signals it was ungrounded |
 | Gemini quota exhausted | `QuotaExhaustedError` → `AppError(503)` | "AI service is busy" | nothing |
+| Guardrail hard-fails, repair pass throws | caught + `console.error("[generate] guardrail repair failed:")` | a contract with `guardrails.ok === false` in the (discarded) response | the unrepaired draft is what saves |
+| Guardrail hard-fails, repair pass doesn't clear it | draft returns with residual `hardFailures` | same — client shows nothing | unrepaired failure ships silently |
 | Save fails | as [B6](#b6) | draft lost | nothing |
 
 **8 · Sequence diagram**
@@ -505,9 +523,14 @@ sequenceDiagram
     PG-->>API: chunks + score
   end
   API->>API: round-robin merge → topK 12
-  API->>GM: generateContent (RECHTSGRUNDLAGEN + VERTRAGSDATEN, maxTokens 8192)
+  API->>GM: generateContent (RECHTSGRUNDLAGEN + MANDANTENVORGABEN + VERTRAGSDATEN, maxTokens 8192)
   GM-->>API: Wohnraummietvertrag text
-  API-->>B: { text, grounded, groundingRefs, retrievedDocs }
+  API->>API: evaluateGuardrails(draft, fields) → report
+  opt report.ok === false
+    API->>GM: repairGuardrails — fix ONLY the violations (maxTokens 8192)
+    GM-->>API: repaired draft ; re-evaluate
+  end
+  API-->>B: { text, guardrails, grounded, groundingRefs, retrievedDocs }
   B->>API: POST /api/contracts { extracted_text, risk_level:"low", clauses:[] }
   B->>B: /review?contractId=id&mode=create
 ```
@@ -522,13 +545,15 @@ sequenceDiagram
 > | B7-O2 | No persisted grounding provenance | NO-METRIC | store `groundingRefs` on the contract, or a `contract_grounding` row — tier 2 |
 > | B7-O3 | Stale/empty index only shows as a generic 500 | THIN-LOG | catch `assertIndexFresh`, log `{ event:"rag_index_stale" }` — tier 0 (also H4-O4) |
 
-**10 · See also** — [H4](h4-rag-pipeline.md) (the full pipeline), [B8](#b8) (adding a template constraint on top), [B6](#b6) (the non-lease branch).
+**10 · See also** — [H4](h4-rag-pipeline.md) (the full pipeline), [H9](h9-guardrails.md) (the guardrail gate + repair pass, non-empty for this lease type), [B8](#b8) (adding a template constraint on top), [B6](#b6) (the non-lease branch).
 
 ---
 
 ## <a id="b8"></a>B8 — Generate from a template, with AI
 
-**0 · TL;DR** — With a `templateId` **and** free-text key terms, `/api/generate` renders the template body against `values` and injects it as a *binding structure* into the generation prompt (RAG for a lease, plain otherwise); the model adapts it only where the key terms demand.
+**0 · TL;DR** — With a `templateId` **and** free-text key terms, `/api/generate` renders the template body against `values` and injects it as a *starting structure* into the generation prompt (RAG for a lease, plain otherwise); where the client's key terms differ or ask for more, the model follows the client, not the template (unless mandatory German law forbids it). The draft then goes through the [guardrail gate](h9-guardrails.md); the response carries `guardrails`.
+
+> _Partial re-verify @ `f40b569`: the precedence flip (client key terms over the template) + the guardrail gate are current; the render engine (B9) is unchanged. Rest at `bf4d660`._
 
 **1 · Entry point** — Create modal, "From template" step (`src/components/create-contract-modal.tsx` — `mode === "template"`), with `keyTerms` non-empty so `useRender` is **false** (`:124`). `onGenerate` posts to `/api/generate` with `templateId` + `values` (`dashboard/page.tsx:416-427`).
 
@@ -538,17 +563,17 @@ sequenceDiagram
 ```
 POST /api/generate · auth: proxy-gated · limit: generate 15/h · 40/d
   req  { contractType, party1, party2, language?, keyTerms, templateId, values }
-  res  { text, templateId }
+  res  { text, guardrails: GuardrailReport, templateId }
 ```
-1. `route.ts:112` → `renderTemplateBody(body, language)` (`:49-61`):
+1. `route.ts:185` → `renderTemplateBody(body, language)` (`:67-93`) → `{ text, missing, langOk } | null`:
    - `getTemplate(templateId, currentUserId())` — `null` (→ ignored) if absent/invisible.
-   - pick `body_en` when `language === "en"` and it exists, else `body`.
-   - `renderTemplate(source, values, { variables: tpl.variables, sections: tpl.sections.map(s => ({ key: s.key, enabled: true })) })` ([B9](#b9) has the engine detail) → `text`.
-   - returns `text.trim() || null`.
-2. **Lease branch** (`:118`) — `draftGermanLease(body, templateBody)` → `generateGermanRentalContract({ …, templateBody })`. The RAG prompt gets a `VERBINDLICHE VERTRAGSSTRUKTUR` block between `RECHTSGRUNDLAGEN` and `VERTRAGSDATEN`, instructing the model to keep the structure/wording unless the key terms require a change. Grounding is unchanged — the template is an *additional* constraint, never a replacement.
-3. **Non-lease branch** (`:132-138`) — `structureBlock` wraps `templateBody` in `--- REQUIRED STRUCTURE --- … --- END ---` and prepends it to the plain prompt.
-4. `askLLM` (RAG `complete` or plain), then respond `{ text, templateId }`.
-5. Save + redirect: as [B6](#b6). ⚠ `templateId` is again dropped by the save.
+   - `langOk` = `language === "de" || !!tpl.body_en`; pick `body_en` when `language === "en"` and it exists, else `body`.
+   - `renderTemplate(source, values, { variables: tpl.variables, sections: tpl.sections.map(s => ({ key: s.key, enabled: true })) })` ([B9](#b9) has the engine detail) → `{ text, missing }`.
+   - the **deterministic fast path** (`:193-206`) is skipped here — it needs `!keyTerms?.trim()` (that case is B9's territory, though via the separate render route from the dashboard).
+2. **Lease branch** (`:213`) — `draftGermanLease(body, templateBody)` → `generateGermanRentalContract({ …, templateBody })`. The RAG prompt gets an **`AUSGANGSSTRUKTUR (Vorlage)`** block, *after* a **`MANDANTENVORGABEN`** block, both between `RECHTSGRUNDLAGEN` and `VERTRAGSDATEN`: "use the structure as a starting point; where the MANDANTENVORGABEN differ or ask for more, follow them — unless mandatory law forbids it". Grounding is unchanged.
+3. **Non-lease branch** (`:224-262`) — `clientBlock` ("CLIENT REQUIREMENTS … take precedence over the starting structure") precedes `structureBlock`, which wraps `templateBody` in `--- STARTING STRUCTURE --- … --- END STARTING STRUCTURE ---`.
+4. `askLLM` (RAG `complete` or plain) → `draftText`, then the **guardrail gate + one repair pass** (`:270-292`), then respond `{ text: draftText, guardrails, ...leaseMeta, templateId }`.
+5. Save + redirect: as [B6](#b6). ⚠ `templateId` is again dropped by the save; ⚠ `guardrails` is dropped client-side.
 
 **4 · External calls** — as [B6](#b6)/[B7](#b7) depending on branch, plus the (local, no-AI) `renderTemplate` call.
 
@@ -567,16 +592,17 @@ sequenceDiagram
   B->>API: POST /api/generate { templateId, values, keyTerms, ... }
   API->>PG: getTemplate(templateId, userId)  (own | curated)
   PG-->>API: template (or null → proceed without)
-  API->>API: renderTemplate(body, values) → structure text
+  API->>API: renderTemplate(body, values) → starting-structure text
   alt Lease Agreement
     API->>API: draftGermanLease(body, structureText)
-    Note over API,GM: RECHTSGRUNDLAGEN + VERBINDLICHE VERTRAGSSTRUKTUR + VERTRAGSDATEN
+    Note over API,GM: RECHTSGRUNDLAGEN + MANDANTENVORGABEN + AUSGANGSSTRUKTUR + VERTRAGSDATEN
   else other type
-    API->>API: prepend --- REQUIRED STRUCTURE --- to plain prompt
+    API->>API: CLIENT REQUIREMENTS + --- STARTING STRUCTURE --- + plain prompt
   end
   API->>GM: generateContent (maxTokens 8192)
   GM-->>API: contract text
-  API-->>B: { text, templateId }
+  API->>API: evaluateGuardrails → opt one repair pass
+  API-->>B: { text, guardrails, templateId }
 ```
 
 **9 · Observability notes**
@@ -596,6 +622,8 @@ sequenceDiagram
 ## <a id="b9"></a>B9 — Render from a template — no AI
 
 **0 · TL;DR** — With a `templateId` and **no** key terms, the dashboard calls `/api/templates/[id]/render` instead of `/api/generate` — pure `{{placeholder}}` substitution, no Gemini, instant, deterministic — then saves and opens `/review`.
+
+> _`/api/generate` gained its own equivalent no-model path @ `f40b569` (`route.ts:193-206`): a fully-filled template, in the requested language, with no `keyTerms`, returns `{ text, guardrails, rendered: true }` without calling Gemini — and still runs the [clause-guardrail](h9-guardrails.md) check (a failure there flags a curated-template bug). The dashboard doesn't take this path — it uses the render route below — but a partner API ([issue #4](https://github.com/getlexora-ai/lexora/issues/4)) would._
 
 **1 · Entry point** — Create modal "From template" step with `keyTerms` empty → `useRender = true` (`src/components/create-contract-modal.tsx:124`). `onGenerate` branches on `useRender && templateId` (`dashboard/page.tsx:414-421`). Handler: `src/app/api/templates/[id]/render/route.ts`.
 

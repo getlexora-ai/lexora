@@ -2,7 +2,7 @@
 
 _Everything the code contains that a user cannot currently reach, plus the shipped behaviours that are bugs. One short entry each — the full workflow treatment is deliberately skipped, since some of this may be deleted rather than documented._
 
-Verified against `main` @ `bf4d660`.
+Verified against `main` @ `bf4d660`, with `f40b569` updates to Z6, Z-B10 and new entries Z9 / Z-B16 / Z-B17 for the clause-guardrails + PII-playground work.
 
 ---
 
@@ -34,7 +34,7 @@ Reachable only by direct HTTP. See [e-templates.md#e5](e-templates.md) for the t
 
 ### Z6 — Review-screen "Compare" and "Approval" tabs
 
-`NAV_TABS` (`src/app/review/page.tsx:57`) lists five tabs; only **Review / History / Playbook** have real branches. "Compare" and "Approval" fall through to a "coming soon" placeholder (`src/app/review/page.tsx:1154-1170`). Same for the left rail's **"Risk dashboard"** and **"Settings"** and the sidebar's `INSIGHTS_NAV` items (`Risk dashboard`, `Activity`), all rendered with a `soon` badge (`src/components/sidebar.tsx`).
+`NAV_TABS` (`src/app/review/page.tsx:70`) lists five tabs; only **Review / History / Playbook** have real branches. "Compare" and "Approval" fall through to a "coming soon" placeholder. The review-screen left rail's **"Risk dashboard"** (`RAIL`, `src/app/review/page.tsx:63-68` — no `href`) and **"Settings"** are still dead, as is the sidebar's `INSIGHTS_NAV` **"Activity"** (`soon` badge). ✅ **The sidebar's "Risk dashboard" is now live** @ `f40b569` — `INSIGHTS_NAV` (`src/components/sidebar.tsx:39`) lost its `soon: true`, and `/risk` (`src/app/(workspace)/risk/page.tsx`) renders the real portfolio charts ([G3](g-dashboard-and-workspace.md#g3)).
 
 ### Z7 — Roadmap DB tables
 
@@ -45,6 +45,15 @@ Reachable only by direct HTTP. See [e-templates.md#e5](e-templates.md) for the t
 - **Navbar ⌘K search field + Filter button** (`src/components/navbar.tsx` app variant) — rendered, no handler, no keybinding.
 - **`Sidebar` `contractCount` prop** (`src/components/sidebar.tsx`) — accepted, never passed by `(workspace)/layout.tsx`, so the Contracts nav item never shows a count.
 - **`PRO` model constant** (`src/lib/llm.ts:14`) — `gemini-pro-latest`, unused; 429s on the free tier.
+
+### Z9 — PII pseudonymisation: the library + the `/dev/pii` playground (issue #3)
+
+`src/lib/pii/*` is a **complete** deterministic-swap + pattern + optional LLM-scan pseudonymisation toolkit — `sanitize` / `desanitize`, `buildMap`, `collectMatches`, `auditLeaks` / `auditResidual`, Faker-style vs `[NAME_1]` pseudonym styles, German morphology. **No production path calls it.** The only consumer is:
+
+- **`/dev/pii`** (`src/app/dev/pii/page.tsx`, ~390 lines) — a 4-stage playground UI (original → sanitised → LLM output on pseudonyms → re-inserted), for choosing a design for issue #3.
+- **`POST /api/dev/pii-roundtrip`** (`src/app/api/dev/pii-roundtrip/route.ts`) — drives it. **Not in `src/proxy.ts` (no auth gate)** and **`404`s when `NODE_ENV === "production"`** (`:40`). It *does* call `askLLM` (real Gemini) with no rate-limit tier.
+
+Reachable in dev by typing `/dev/pii`; nothing links to it. This is scaffolding for [issue #3](https://github.com/getlexora-ai/lexora/issues/3), not a shipped feature — the real generation/analysis paths still send raw party data to the LLM.
 
 ---
 
@@ -90,7 +99,7 @@ One jsonb snapshot per Apply-fix / AI edit / manual save / restore ([C13](c3-rev
 
 ### Z-B10 — `contract-edit` inlines the whole document, no cap
 
-`src/app/api/contract-edit/route.ts:31` — the entire `currentDocument` goes into the system prompt with no `slice()`. Every other LLM route caps its input ([H5](h5-llm-layer.md#max-chars)). The `---EXPLANATION---` split (`:40-42`) is also brittle (audit finding A4).
+`src/app/api/contract-edit/route.ts:69-70` — the entire `currentDocument` goes into the system prompt with no `slice()`. Every other LLM route caps its input ([H5](h5-llm-layer.md#max-chars)). _(The brittle `---EXPLANATION---` string-split is **fixed** @ `f40b569` — replaced by the forgiving `parseEditReply` parser in `src/lib/contract-edit-reply.ts`, which downgrades a malformed reply to a plain answer rather than blanking the contract; see [C11](c3-review-ai-and-output.md#c11). The input cap is still absent.)_
 
 ### Z-B11 — `contracts.deleted_at` exists but nothing sets it
 
@@ -112,8 +121,16 @@ The column comment says `'guest' | 'user'`; `enforceRateLimit` returns `null` wi
 
 Claims Anthropic Claude and localStorage persistence. It is Gemini + Neon Postgres. This `docs/workflows/` set supersedes it.
 
+### Z-B16 — `risk_clauses.category` is write-only-on-reanalyse and never read back (@ `f40b569`)
+
+The [clause-guardrail](h9-guardrails.md#category) `category` tag (`compliance` / `negotiation`) is computed by `/api/analyse` **and** `/api/contracts/[id]/reanalyse`, but only **reanalyse** persists it (`db/009` column). `POST /api/contracts` (the [B5](b-getting-a-contract-in.md#b5) first save) has no `category` in its insert, and `GET /api/contracts/[id]` doesn't select it — so a freshly analysed-and-saved contract has `category = null` on every row, and a page reload loses whatever `category` a live re-analyse produced. ⚠ `db/009` is also **not applied on prod** (`MEMORY.md`) — the re-analyse INSERT throws there until it is.
+
+### Z-B17 — the `guardrails` report is dropped on every path except review-screen re-analyse (@ `f40b569`)
+
+`/api/generate` (all three paths, incl. the `rendered: true` fast path) and the initial `/api/analyse` both return a `GuardrailReport`. The create-contract flow (`dashboard/page.tsx` `onGenerate`) and the `/analysis` page read only `text` / `clauses` and **discard `guardrails`**. `GuardrailStrip` (`src/components/guardrail-strip.tsx`) renders in exactly one place: above the editor after `handleReanalyse` sets `setGuardrails(...)` (`src/app/review/page.tsx:876`). So a user never sees guardrail status on a freshly generated contract until they manually re-analyse it.
+
 ---
 
 ## Route coverage note
 
-`find src/app/api -name route.ts` → 26 files. Every exported `GET`/`POST`/`PATCH`/`DELETE` is traced in a workflow file **or** listed here (Z1, Z2, Z3). The dead-guest `GET`s on `/api/clauses/[clauseId]/refinements` and `/api/contracts/[id]/original` are the only handlers with no live caller.
+`find src/app/api -name route.ts` → 32 files (was 26 when this note was first written; +`/api/dev/pii-roundtrip` @ `f40b569`, see [Z9](#z9)). Every exported `GET`/`POST`/`PATCH`/`DELETE` is traced in a workflow file **or** listed here (Z1, Z2, Z3, Z9). The dead-guest `GET`s on `/api/clauses/[clauseId]/refinements` and `/api/contracts/[id]/original` and the dev-only `/api/dev/pii-roundtrip` are the handlers with no live production caller.

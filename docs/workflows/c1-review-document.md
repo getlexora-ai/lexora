@@ -152,20 +152,24 @@ sequenceDiagram
 
 ## <a id="c3"></a>C3 — Quill init + the debounced 2 s autosave
 
-**0 · TL;DR** — A mount-once effect dynamic-`import()`s Quill, builds one editor with a fixed toolbar, seeds it (DB delta → in-memory text, in that order), and wires a `text-change` listener that — for user edits only — debounces 2 s and `PATCH`es the whole `quill_delta` to `/api/contracts/{id}`. This is the app's highest-frequency write.
+**0 · TL;DR** — A mount-once effect dynamic-`import()`s Quill, registers a curated set of typography formats, builds one editor with a word-processor-grade toolbar, seeds it (DB delta → in-memory text, in that order), and wires a `text-change` listener that — for user edits only — debounces 2 s and `PATCH`es the whole `quill_delta` to `/api/contracts/{id}`. The editor host **stays mounted for the whole session** — the other review tabs toggle with `hidden`, they don't unmount it (issue #9). This is the app's highest-frequency write.
 
-**1 · Entry point** — `src/app/review/page.tsx:314-403` — `useEffect(() => { … }, [])` (empty deps; the `eslint-disable react-hooks/exhaustive-deps` at `:402` is deliberate). Mounts into `containerRef` (`<div ref={containerRef} className="quill-host …" />`, `:1223`).
+> _Partial re-verify @ `f40b569`: the expanded toolbar / `registerQuillFormats` (#10), the toolbar-move step, and the stay-mounted render (#9) are current; line numbers re-checked. The autosave mechanics are unchanged from `bf4d660`._
+
+**1 · Entry point** — `src/app/review/page.tsx:345-446` — `useEffect(() => { … }, [])` (empty deps; the `eslint-disable react-hooks/exhaustive-deps` at `:444` is deliberate). Mounts into `containerRef` (`<div ref={containerRef} className="quill-host …" />`, `:1319`) — which is rendered inside a wrapper that gets `className={cn(…, activeTab !== "Review" && "hidden")}` (`:1256-1262`), never a conditional that unmounts it.
 
 **2 · Preconditions** — `containerRef.current` present (`:316`). For the autosave to fire: `searchParams.get("contractId")` non-null, re-read *inside* the debounce callback (`:357`) — so an in-memory-only session ([C2](#c2)) mounts the editor but never autosaves. The `PATCH` handler needs a session (`currentUserId()` → `signInRequired()`, `contracts/[id]/route.ts:43-44`) and is owner-scoped in SQL (`where … and user_id = $N`, `:70`). Not compute-gated, not rate-limited.
 
 **3 · Trace**
-1. `page.tsx:321` — `el.innerHTML = ""` — wipe any DOM left by a prior run (React StrictMode double-invokes effects in dev).
-2. `page.tsx:323` — `import("quill").then(({ default: Quill }) => …)` — Quill is code-split, loaded on first review open.
-3. `page.tsx:326` — `if (cancelled || !containerRef.current) return;` — the StrictMode guard: if cleanup (`:396-401`) already ran, the late-resolving promise bails instead of building a second toolbar.
-4. `page.tsx:328-332` — `new Quill(containerRef.current, { theme: "snow", modules: { toolbar: QUILL_TOOLBAR }, placeholder: … })`. `QUILL_TOOLBAR` (`:59-65`): bold/italic/underline/strike, H1–H3, ordered/bullet list, link, clean.
-5. `page.tsx:336-345` — seed, in priority order: `pendingDbContent.current.delta` → `setContents` (`:337-339`); else `pendingDbContent.current.text` → `setDocText` (`:340-342`); else `result?.extractedText` → `setDocText` (`:343-345`). Then `quill.history.clear()` (`:346`) so the seed isn't undoable.
-6. `page.tsx:348` — `quillRef.current = quill`.
-7. `page.tsx:352-366` — the autosave: `quill.on("text-change", (_delta, _old, source) => { … })`. `if (source !== "user") return;` (`:354`) — programmatic edits (Apply fix, restore, AI edit) do **not** trigger it. Otherwise `clearTimeout` + `setTimeout(…, 2000)` (`:355-356`); the callback re-reads `contractId` (`:357`), takes `quill.getContents()` (`:359`), and fires the network write.
+1. `page.tsx:346-347` — `const el = containerRef.current; if (!el) return;` then `el.innerHTML = ""` (`:353`) — wipe any DOM left by a prior run (React StrictMode double-invokes effects in dev).
+2. `page.tsx:355` — `import("quill").then(({ default: Quill }) => …)` — Quill is code-split, loaded on first review open.
+3. `page.tsx:358` — `if (cancelled || !containerRef.current) return;` — the StrictMode guard: if cleanup (`:438-443`) already ran, the late-resolving promise bails instead of building a second toolbar.
+4. `page.tsx:359` — `registerQuillFormats(Quill)` (`:104-133`, guarded by a module-level `quillFormatsRegistered` flag so it runs once per page load): registers the **style** attributors for `size` (`FONT_SIZES` = 12/14/16/18/24/32 px, stored verbatim on the op so export reads it directly) and `align`, the **class** attributor for `font` (`serif` / `mono`, `.ql-font-*` in `globals.css`), and a custom BLOCK `lineheight` style attributor (1 / 1.15 / 1.5 / 2). Curated on purpose — arbitrary fonts/sizes break `.docx`/`.pdf` fidelity ([C16](c3-review-ai-and-output.md#c16)) and the AI-edit Markdown round-trip ([C11](c3-review-ai-and-output.md#c11)).
+5. `page.tsx:361-365` — `new Quill(containerRef.current, { theme: "snow", modules: { toolbar: QUILL_TOOLBAR }, placeholder: … })`. `QUILL_TOOLBAR` (`:93-102`): font family + size, H1–H3, bold/italic/underline/strike, text + background colour, super/sub script, align + line-height, ordered/bullet list + indent −/＋, blockquote + code-block, link, clean.
+6. `page.tsx:368-373` — with an **array** toolbar config Quill inserts the `.ql-toolbar` as a *sibling* of the host; move it inside `containerRef` (`insertBefore(toolbarEl, firstChild)`) so the `.quill-host .ql-toolbar` rules in `globals.css` apply. (Before this move every such rule was dead CSS.)
+7. `page.tsx:378-387` — seed, in priority order: `pendingDbContent.current.delta` → `setContents` (`:379-381`); else `pendingDbContent.current.text` → `setDocText` (`:382-384`); else `result?.extractedText` → `setDocText` (`:385-387`). Then `quill.history.clear()` (`:388`) so the seed isn't undoable.
+8. `page.tsx:390` — `quillRef.current = quill`.
+9. `page.tsx:392-434` — the autosave: `quill.on("text-change", (_delta, _old, source) => { … })`. `if (source !== "user") return;` — programmatic edits (Apply fix, restore, AI edit) do **not** trigger it. Otherwise `clearTimeout` + `setTimeout(…, 2000)`; the callback re-reads `contractId`, takes `quill.getContents()`, and fires the network write.
 
 ```
 PATCH /api/contracts/{cid} · auth: currentUserId · limit: none
@@ -173,11 +177,11 @@ PATCH /api/contracts/{cid} · auth: currentUserId · limit: none
   res  { ok: true }
 ```
 
-8. `contracts/[id]/route.ts:46-72` — the handler accepts only `name` / `quill_delta` / `issues_fixed`; `quill_delta` is stored `JSON.stringify`'d (`:60`); one `update contracts set quill_delta = $1 where id = $2 and user_id = $3` (`:68-72`). Fire-and-forget on the client — `.catch(err => console.error("[quill text-change] save delta failed:", err))` (`:364`), no response handling, no retry.
-9. `page.tsx:369-393` — the same effect also wires `selection-change` → the floating selection toolbar (see [C12](c3-review-ai-and-output.md#c12)).
-10. `page.tsx:396-401` — cleanup sets `cancelled = true`, nulls `quillRef` / `prevHighlight`, and clears the container DOM.
+10. `contracts/[id]/route.ts:46-72` — the handler accepts only `name` / `quill_delta` / `issues_fixed`; `quill_delta` is stored `JSON.stringify`'d (`:60`); one `update contracts set quill_delta = $1 where id = $2 and user_id = $3` (`:68-72`). Fire-and-forget on the client — `.catch(err => console.error("[quill text-change] save delta failed:", err))`, no response handling, no retry.
+11. Later in the same effect — `selection-change` → the floating selection toolbar (see [C12](c3-review-ai-and-output.md#c12)).
+12. `page.tsx:438-443` — cleanup sets `cancelled = true`, nulls `quillRef` / `prevHighlight`, and clears the container DOM. **This runs on real unmount only** (leaving the review screen), not on a tab switch — the host stays mounted (§0, issue #9).
 
-**`setDocText`** (`page.tsx:28-34`) picks the insertion strategy: `looksLikeMarkdown(text)` (`src/lib/markdown.ts:24-32` — ATX headings, `**bold**`, fenced code, or `-`/`*` bullet lists) → `quill.setContents(quill.clipboard.convert({ html: markdownToHtml(text) }))` (`markdown.ts:45-51`, `marked` with `gfm` + `breaks`); otherwise `quill.setText(stripPageSeparators(text))` (`markdown.ts:35-37` — strips LLMWhisperer's `<<<` page markers, collapses 3+ newlines). Generated / AI-edited drafts come in as Markdown; uploads come in as plain layout-preserving text.
+**`setDocText`** (`page.tsx:32-39`) picks the insertion strategy: `looksLikeMarkdown(text)` (`src/lib/markdown.ts:24-32` — ATX headings, `**bold**`, fenced code, or `-`/`*` bullet lists) → `quill.setContents(quill.clipboard.convert({ html: markdownToHtml(text) }))` (`marked` with `gfm` + `breaks`); otherwise `quill.setText(stripPageSeparators(text))` (strips LLMWhisperer's `<<<` page markers, collapses 3+ newlines). Generated / AI-edited drafts come in as Markdown; uploads come in as plain layout-preserving text. A sibling helper **`applyDocMarkdown`** (`page.tsx:45-49`) is the Markdown-only variant with **no plain-text fallback** — the Ask-AI full-rewrite path uses it so an AI reply always round-trips through Markdown→HTML→delta and never flattens to `setText` (issue #7; see [C11](c3-review-ai-and-output.md#c11)).
 
 **4 · Database effects** — `contracts.quill_delta` overwritten on each debounced save (`contracts/[id]/route.ts:68`), plus `updated_at` via the `contracts_updated_at` trigger ([H6](h6-database-schema.md#tables)). No `contract_versions` row — autosave is **not** snapshotted (only Apply-fix / AI-edit / manual save / restore snapshot; see [C13](c3-review-ai-and-output.md#c13)). No transaction. Last write wins — two tabs on the same contract silently clobber each other.
 
@@ -190,9 +194,10 @@ PATCH /api/contracts/{cid} · auth: currentUserId · limit: none
 | `PATCH` fails (network / 500 / 401) | `console.error("[quill text-change] save delta failed:")` (`:364`); no toast, no retry | nothing — the editor looks saved | the DB keeps the *previous* delta; the last ≤ 2 s + everything since is lost on reload |
 | User closes the tab within the 2 s debounce | timer never fires | — | edits since the last successful save are lost |
 | Two tabs editing one contract | each debounce overwrites the whole delta | no conflict indicator | last writer wins; the other tab's edits vanish on its next reload |
-| StrictMode double-mount (dev) | `cancelled` + `el.innerHTML=""` guards (`:321`, `:326`, `:396-401`) | single clean editor | — |
+| StrictMode double-mount (dev) | `cancelled` + `el.innerHTML=""` guards (`:353`, `:358`, `:438-443`) | single clean editor | — |
+| Switch to Playbook / Compare / History / Approval and back | the host wrapper gets `hidden`, not unmounted (`:1256-1262`) | editor + content intact on return | ✅ the live delta and any unsaved edits — the issue-#9 regression is fixed |
 | `quill_delta` is huge (long contract, many highlights) | full jsonb blob sent every 2 s of typing | slight lag on very large docs | — |
-| In-memory session (no `contractId`) | `:357` returns early | editor works, nothing persists | nothing ([C2](#c2)) |
+| In-memory session (no `contractId`) | debounce callback returns early | editor works, nothing persists | nothing ([C2](#c2)) |
 
 **8 · Sequence diagram**
 
@@ -213,7 +218,7 @@ sequenceDiagram
 ```
 
 **9 · Observability notes**
-> **What you can see today.** `console.error("[quill text-change] save delta failed:", err)` on a rejected `PATCH` (`page.tsx:364`). Nothing on success. The handler does not log; its `catch` returns the raw DB message 500 (`contracts/[id]/route.ts:75`).
+> **What you can see today.** `console.error("[quill text-change] save delta failed:", err)` on a rejected `PATCH` (in the debounce `.catch`, `page.tsx` ~`:410`). Nothing on success. The handler does not log; its `catch` returns the raw DB message 500 (`contracts/[id]/route.ts`).
 > **What you can't.** Autosave frequency / volume / payload size. Save-failure rate (the `.catch` only `console.error`s, never counts). How often two-tab clobbering happens. Time-since-last-successful-save, so no "unsaved changes" signal is possible today. Whether a save 401'd (session expired mid-session) vs 500'd.
 >
 > | # | Blind spot | Class | Cheapest fix |

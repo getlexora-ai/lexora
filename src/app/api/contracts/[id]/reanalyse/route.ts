@@ -35,16 +35,21 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   let issues: Issue[];
   let coverage: Awaited<ReturnType<typeof analyseContractWithPlaybook>>["coverage"] = [];
+  let guardrails: Awaited<ReturnType<typeof analyseContract>>["guardrails"];
   try {
     if (usePlaybook) {
       const out = await analyseContractWithPlaybook(text, {
         language: lang,
         rules: pb!.rules.map(toPromptRule),
+        contractType: contractType ?? undefined,
       });
       issues = out.issues;
       coverage = out.coverage;
+      guardrails = out.guardrails;
     } else {
-      issues = await analyseContract(text, lang);
+      const out = await analyseContract(text, { language: lang, contractType: contractType ?? undefined });
+      issues = out.issues;
+      guardrails = out.guardrails;
     }
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 });
@@ -54,6 +59,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     id: string; type: string; clause: string; passage: string;
     issue: string; suggestion: string; sort_order: number;
     reference: string | null; playbook_rule_id: string | null; verdict: string | null;
+    category: string | null;
   }> = [];
 
   try {
@@ -61,28 +67,30 @@ export async function POST(req: NextRequest, { params }: Params) {
     await query(`delete from risk_clauses where contract_id = $1 and status = 'pending'`, [id]);
 
     if (issues.length > 0) {
+      const COLS = 12;
       const rows: string[] = [];
       const values: unknown[] = [];
       issues.forEach((c, i) => {
-        const b = i * 11;
+        const b = i * COLS;
         rows.push(
-          `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6}, $${b + 7}, $${b + 8}, $${b + 9}, $${b + 10}, $${b + 11})`,
+          `(${Array.from({ length: COLS }, (_, k) => `$${b + k + 1}`).join(", ")})`,
         );
         values.push(
           id, c.type, c.clause, c.passage, c.issue, c.suggestion, i, "pending",
           c.reference ?? null,
           c.rule_id ?? null,
           c.verdict ?? null,
+          c.category ?? null,
         );
       });
 
       inserted = await query(
         `insert into risk_clauses
            (contract_id, type, clause, passage, issue, suggestion, sort_order, status,
-            reference, playbook_rule_id, verdict)
+            reference, playbook_rule_id, verdict, category)
          values ${rows.join(", ")}
          returning id, type, clause, passage, issue, suggestion, sort_order,
-                   reference, playbook_rule_id, verdict`,
+                   reference, playbook_rule_id, verdict, category`,
         values,
       );
     }
@@ -107,14 +115,16 @@ export async function POST(req: NextRequest, { params }: Params) {
       ...(c.reference ? { reference: c.reference } : {}),
       ...(c.playbook_rule_id ? { playbook_rule_id: c.playbook_rule_id } : {}),
       ...(c.verdict ? { verdict: c.verdict as "meets" | "fallback" | "redline" } : {}),
+      ...(c.category ? { category: c.category as RiskClause["category"] } : {}),
     }));
 
   if (usePlaybook) {
     return NextResponse.json({
       clauses,
       coverage,
+      guardrails,
       playbook: { id: pb!.playbook.id, name: pb!.playbook.name, is_approved: pb!.playbook.is_approved },
     });
   }
-  return NextResponse.json({ clauses });
+  return NextResponse.json({ clauses, guardrails });
 }

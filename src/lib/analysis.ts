@@ -7,7 +7,20 @@
 // `renderPlaybookBlock`, `coerceCoverage`) stay importable from plain
 // `node --test` without a path-alias resolver.
 
+import { evaluateGuardrails, rulesForScope } from "./guardrails/index.ts";
+import type { GuardrailFields, GuardrailReport } from "./guardrails/index.ts";
+import { guessTopic } from "./clause-taxonomy.ts";
+
 export type Language = "en" | "de";
+
+/**
+ * How serious a finding is, independent of the high/medium/low severity axis:
+ * - `compliance`  — the clause is void / breaches a statutory guardrail. A
+ *                   freshly generated contract must have ZERO of these (#8).
+ * - `negotiation` — a playbook-position redline on a non-critical topic.
+ * - `info`        — reserved for future "attention" flags; not emitted yet.
+ */
+export type IssueCategory = "compliance" | "negotiation" | "info";
 
 export type Issue = {
   passage: string;
@@ -21,6 +34,8 @@ export type Issue = {
   rule_id?: string;
   /** Wave 4: how the clause scored against its rule. */
   verdict?: "meets" | "fallback" | "redline";
+  /** Set by `applyGuardrails` from the clause-guardrail engine, not the model. */
+  category?: IssueCategory;
 };
 
 // ── Playbooks (Wave 4) ──────────────────────────────────────────────────────
@@ -287,6 +302,82 @@ export function coerceCoverage(parsed: unknown, rules: PlaybookRule[]): Coverage
   });
 }
 
+// ── Guardrails (issue #8 / clause-criticality) ─────────────────────────────
+// The clause-guardrail engine (src/lib/guardrails + the `tier` on the taxonomy)
+// is the "one rulebook": it always runs for a known contract type, playbook or
+// not, and it is what makes "a generated contract is error-free" measurable.
+
+const SECTION_RE = /§\s?\d+[a-z]?/gi;
+function sectionTokens(s: string | undefined): string[] {
+  return (s ?? "").match(SECTION_RE)?.map((x) => x.replace(/§\s?/i, "§").toLowerCase()) ?? [];
+}
+
+/**
+ * Fold the guardrail check into an analysis result:
+ *  - tag every issue `compliance` | `negotiation`
+ *  - append a `compliance` issue for any hard guardrail failure the model missed
+ *
+ * An issue is `compliance` when it cites a statute a guardrail constraint relies
+ * on, or its clause maps to a guardrail-tier topic. Otherwise it is
+ * `negotiation` when a playbook drove the review, else `compliance` (a no-rule
+ * review only reports legal defects). `info` is reserved, not emitted here. Pure.
+ */
+export function applyGuardrails(
+  issues: Issue[],
+  args: {
+    contractText: string;
+    contractType?: string;
+    fields?: GuardrailFields;
+    language?: Language;
+    hasRules?: boolean;
+  },
+): { issues: Issue[]; guardrails: GuardrailReport } {
+  const lease = args.contractType === "Lease Agreement";
+  const guardrails = evaluateGuardrails({
+    contractText: args.contractText,
+    contractType: args.contractType ?? "",
+    fields: args.fields,
+    language: args.language,
+  });
+
+  // Every topic that carries a guardrail rule (hard or soft) is statute-grounded,
+  // so a finding on any of them — or citing any of their norms — is `compliance`.
+  const gRules = rulesForScope({ lease });
+  const gKeys = new Set(gRules.map((r) => r.topic));
+  const gSections = new Set(
+    gRules.flatMap((r) =>
+      r.constraints.flatMap((c) => sectionTokens("reference" in c ? c.reference : undefined)),
+    ),
+  );
+
+  const categorise = (i: Issue): IssueCategory => {
+    const cites = [...sectionTokens(i.reference), ...sectionTokens(i.issue)];
+    if (cites.some((s) => gSections.has(s))) return "compliance";
+    if (gKeys.has(guessTopic(i.clause))) return "compliance";
+    return args.hasRules ? "negotiation" : "compliance";
+  };
+
+  const tagged: Issue[] = issues.map((i) => ({ ...i, category: categorise(i) }));
+
+  // Surface the hard guardrail failures the model didn't already report.
+  const covered = new Set(tagged.map((i) => guessTopic(i.clause)));
+  for (const f of guardrails.hardFailures) {
+    if (covered.has(f.topic)) continue;
+    tagged.push({
+      passage: "",
+      type: "high",
+      clause: f.label,
+      issue: f.reference ? `${f.detail} (${f.reference})` : f.detail,
+      suggestion: f.detail,
+      ...(f.reference ? { reference: f.reference } : {}),
+      category: "compliance",
+    });
+    covered.add(f.topic);
+  }
+
+  return { issues: tagged, guardrails };
+}
+
 /**
  * Run the risk analysis over contract text under German law. Uses Gemini
  * structured output so the response is always valid JSON; retries once if the
@@ -305,21 +396,42 @@ const MAX_CHARS = 200_000;
 // Budget the playbook block borrows from the document slice when present.
 const MAX_RULE_CHARS = 12_000;
 
-type AnalyseOpts = { language?: Language; rules?: PlaybookRule[] };
+type AnalyseOpts = {
+  language?: Language;
+  rules?: PlaybookRule[];
+  /** Contract type — enables the clause-guardrail check for this analysis. */
+  contractType?: string;
+  /** Structured facts (rent, deposit …) the numeric guardrails validate against. */
+  fields?: GuardrailFields;
+};
 
-function normaliseOpts(opts: AnalyseOpts | Language): { language: Language; rules?: PlaybookRule[] } {
+function normaliseOpts(opts: AnalyseOpts | Language): {
+  language: Language;
+  rules?: PlaybookRule[];
+  contractType?: string;
+  fields?: GuardrailFields;
+} {
   if (typeof opts === "string") return { language: opts === "en" ? "en" : "de" };
   return {
     language: opts?.language === "en" ? "en" : "de",
     rules: opts?.rules,
+    contractType: opts?.contractType,
+    fields: opts?.fields,
   };
 }
 
+/**
+ * Run the risk analysis and fold in the clause-guardrail check. Returns the
+ * issues (now `category`-tagged, plus any hard guardrail failure the model
+ * missed) and the `GuardrailReport`. If the model produces nothing usable but a
+ * guardrail hard-fails, the guardrail findings are still returned rather than
+ * throwing.
+ */
 export async function analyseContract(
   text: string,
   opts: AnalyseOpts | Language = "de",
-): Promise<Issue[]> {
-  const { language, rules } = normaliseOpts(opts);
+): Promise<{ issues: Issue[]; guardrails: GuardrailReport }> {
+  const { language, rules, contractType, fields } = normaliseOpts(opts);
   const hasRules = Array.isArray(rules) && rules.length > 0;
 
   const { askLLM } = await import("@/lib/llm");
@@ -328,6 +440,9 @@ export async function analyseContract(
   const budget = hasRules ? MAX_CHARS - MAX_RULE_CHARS : MAX_CHARS;
   const prompt = reviewPrompt(language, hasRules ? rules : undefined) + text.slice(0, budget);
   const maxTokens = hasRules ? 12288 : 8192;
+
+  const fold = (issues: Issue[]) =>
+    applyGuardrails(issues, { contractText: text, contractType, fields, language, hasRules });
 
   for (let attempt = 1; attempt <= 2; attempt++) {
     let responseText: string;
@@ -338,18 +453,26 @@ export async function analyseContract(
         responseSchema: RESPONSE_SCHEMA,
       });
     } catch (err) {
-      if (attempt === 2) throw err;
+      if (attempt === 2) {
+        // Transport failed both times — still return a guardrail-only result if
+        // there is anything hard to report.
+        const folded = fold([]);
+        if (folded.issues.length > 0) return folded;
+        throw err;
+      }
       continue;
     }
 
     try {
       const issues = coerceIssues(extractJson(responseText), hasRules ? rules : undefined);
-      if (issues.length > 0) return issues;
+      if (issues.length > 0) return fold(issues);
     } catch {
       // fall through to retry
     }
   }
 
+  const folded = fold([]);
+  if (folded.issues.length > 0) return folded;
   throw new AppError(
     422,
     "analysis_failed",
@@ -365,8 +488,18 @@ export async function analyseContract(
  */
 export async function analyseContractWithPlaybook(
   text: string,
-  { language = "de", rules }: { language?: Language; rules: PlaybookRule[] },
-): Promise<{ issues: Issue[]; coverage: CoverageRow[] }> {
+  {
+    language = "de",
+    rules,
+    contractType,
+    fields,
+  }: {
+    language?: Language;
+    rules: PlaybookRule[];
+    contractType?: string;
+    fields?: GuardrailFields;
+  },
+): Promise<{ issues: Issue[]; coverage: CoverageRow[]; guardrails: GuardrailReport }> {
   const { askLLM } = await import("@/lib/llm");
   const { AppError } = await import("@/lib/errors");
 
@@ -388,10 +521,14 @@ export async function analyseContractWithPlaybook(
 
     try {
       const parsed = extractJson(responseText);
-      return {
-        issues: coerceIssues(parsed, rules),
-        coverage: coerceCoverage(parsed, rules),
-      };
+      const { issues, guardrails } = applyGuardrails(coerceIssues(parsed, rules), {
+        contractText: text,
+        contractType,
+        fields,
+        language: lang,
+        hasRules: true,
+      });
+      return { issues, coverage: coerceCoverage(parsed, rules), guardrails };
     } catch {
       // fall through to retry
     }

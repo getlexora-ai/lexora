@@ -104,14 +104,29 @@ export async function generateGermanRentalContract(
     topK: params.topK ?? 12,
   });
 
+  // The client's own requirements take precedence over the template. The
+  // template is only a starting structure; where the two disagree, or the
+  // client asks for something the template doesn't cover, the client's wording
+  // wins — unless mandatory German law forbids it, in which case the model
+  // corrects it and names the norm in the clause.
+  const clientBlock = params.keyTerms?.trim()
+    ? `MANDANTENVORGABEN (haben Vorrang vor der Vorlage, soweit zwingendes deutsches Recht gewahrt bleibt):
+
+${params.keyTerms.trim()}
+
+=== ENDE MANDANTENVORGABEN ===
+
+`
+    : "";
+
   const templateBlock = params.templateBody?.trim()
-    ? `VERBINDLICHE VERTRAGSSTRUKTUR (Vorlage):
+    ? `AUSGANGSSTRUKTUR (Vorlage):
 
 ${params.templateBody.trim()}
 
-=== ENDE VERTRAGSSTRUKTUR ===
+=== ENDE AUSGANGSSTRUKTUR ===
 
-Übernimm diese Struktur und Klauseltexte unverändert, soweit die Mandantenvorgaben nichts anderes verlangen.
+Nutze diese Struktur und Klauseltexte als Ausgangspunkt. Wo die MANDANTENVORGABEN abweichen oder zusätzliche Klauseln verlangen, folge den MANDANTENVORGABEN — es sei denn, zwingendes deutsches Recht steht entgegen; dann korrigiere und benenne die Norm in der Klausel.
 
 `
     : "";
@@ -122,14 +137,13 @@ ${renderContext(context)}
 
 === ENDE RECHTSGRUNDLAGEN ===
 
-${templateBlock}VERTRAGSDATEN:
+${clientBlock}${templateBlock}VERTRAGSDATEN:
 - Vermieter: ${params.landlord}
 - Mieter: ${params.tenant}
 - Mietobjekt: ${params.propertyAddress}
 - Nettokaltmiete: ${params.baseRentEur} EUR/Monat
 - Betriebskostenvorauszahlung: ${params.operatingCostsEur != null ? `${params.operatingCostsEur} EUR/Monat` : "marktüblich ansetzen"}
 - Kaution: ${params.depositEur != null ? `${params.depositEur} EUR` : "gesetzliches Maximum nach § 551 BGB ansetzen"}
-${params.keyTerms ? `- Weitere Vorgaben des Mandanten: ${params.keyTerms}` : ""}
 
 Erstelle jetzt den vollständigen Wohnraummietvertrag.`;
 

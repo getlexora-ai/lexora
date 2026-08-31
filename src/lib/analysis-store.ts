@@ -13,6 +13,10 @@ export type RiskClause = {
   reference?: string;             // German norm the finding relies on ("§ 307 BGB")
   playbook_rule_id?: string;      // the playbook rule this finding breached
   verdict?: "meets" | "fallback" | "redline";
+  // Guardrails (db/009) — 'compliance' = void / statutory defect, 'negotiation'
+  // = playbook-position redline, 'info' = reserved. Set from the guardrail
+  // engine, not the model.
+  category?: "compliance" | "negotiation" | "info";
 };
 
 export type AnalysisResult = {

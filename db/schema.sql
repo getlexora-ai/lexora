@@ -42,6 +42,9 @@ create type template_source       as enum ('curated', 'user');
 create type playbook_source  as enum ('curated', 'user');
 create type playbook_verdict as enum ('meets', 'fallback', 'redline', 'missing');
 
+-- db/009: separates a hard compliance defect from a negotiation-position flag.
+create type clause_category  as enum ('compliance', 'negotiation', 'info');
+
 
 -- ============================================================
 -- organisations
@@ -131,6 +134,7 @@ create table risk_clauses (
   reference           text,                  -- db/008: German norm the finding relies on ("§ 307 BGB")
   playbook_rule_id    uuid,                  -- db/008: rule this finding breached; FK added in the playbooks section below
   verdict             playbook_verdict,      -- db/008: 'meets' | 'fallback' | 'redline' | 'missing'
+  category            clause_category,       -- db/009: 'compliance' (hard/void) | 'negotiation' | 'info'
 
   dismissed_reason    text,                  -- why the user marked this "not an issue"
   dismissed_at        timestamptz,

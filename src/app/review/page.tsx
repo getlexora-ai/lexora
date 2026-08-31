@@ -14,6 +14,7 @@ import { BrandMark } from "@/components/brand-mark";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { analysisStore, RiskClause } from "@/lib/analysis-store";
 import { CoverageList } from "@/components/playbooks/coverage-list";
+import { GuardrailStrip, type GuardrailReportView } from "@/components/guardrail-strip";
 import type { CoverageRow, PlaybookRule } from "@/components/playbooks/types";
 import { ClausePicker } from "@/components/clauses/clause-picker";
 import type { ClauseRow } from "@/components/clauses/clause-dialog";
@@ -191,6 +192,9 @@ function ReviewContent() {
   // show a "Playbook · <topic> · <verdict>" chip.
   const [playbookId, setPlaybookId] = useState("");
   const [coverage, setCoverage] = useState<CoverageRow[]>([]);
+  // Clause-guardrail report from the last re-analysis — the small set of
+  // non-negotiables (deposit cap, mandatory clauses, void-clause patterns).
+  const [guardrails, setGuardrails] = useState<GuardrailReportView | null>(null);
   const [playbookRules, setPlaybookRules] = useState<PlaybookRule[]>([]);
   const ruleMetaById = new Map(playbookRules.map((r) => [r.id, r]));
 
@@ -869,6 +873,7 @@ function ReviewContent() {
         setActiveCardId(null);
       }
       setCoverage(Array.isArray(data.coverage) ? data.coverage : []);
+      setGuardrails(data.guardrails ?? null);
       if (data.playbook?.id) setPlaybookId(data.playbook.id);
     } finally {
       setReanalysing(false);
@@ -1300,6 +1305,12 @@ function ReviewContent() {
                   <b className="font-semibold text-foreground">Apply fix</b>{" "}
                   on the card to swap in the suggested wording.
                 </span>
+              </div>
+            )}
+
+            {guardrails && (
+              <div className="shrink-0 border-b border-border px-4 py-2">
+                <GuardrailStrip report={guardrails} />
               </div>
             )}
 

@@ -7,6 +7,13 @@ import { generateGermanRentalContract } from "@/lib/rag";
 import { QuotaExhaustedError } from "@/lib/rag/gemini";
 import { getTemplate } from "@/lib/contract-templates";
 import { renderTemplate } from "@/lib/templates/render";
+import { listClauses } from "@/lib/clause-library";
+import {
+  evaluateGuardrails,
+  formatGuardrailsForPrompt,
+  type GuardrailFields,
+  type GuardrailReport,
+} from "@/lib/guardrails";
 
 // The product is Germany-only: every contract is governed by German law. The
 // sole user-facing choice is the output language.
@@ -45,19 +52,44 @@ function isGermanResidentialLease(b: GenerateBody): boolean {
 // unindexed store.
 const MIN_GROUNDING_SCORE = 0.35;
 
-/** Render a saved template's body against `values`, visibility-checked. Returns null when absent/invisible. */
-async function renderTemplateBody(b: GenerateBody, language: Language): Promise<string | null> {
+const num = (v: unknown): number | undefined =>
+  v != null && Number.isFinite(Number(v)) ? Number(v) : undefined;
+
+/** The structured facts the numeric guardrails (deposit cap …) validate against. */
+function guardrailFieldsOf(b: GenerateBody): GuardrailFields {
+  return {
+    baseRentEur: num(b.baseRentEur),
+    operatingCostsEur: num(b.operatingCostsEur),
+    depositEur: num(b.depositEur),
+  };
+}
+
+type RenderedTemplate = { text: string; missing: string[]; langOk: boolean };
+
+/**
+ * Render a saved template's body against `values`, visibility-checked.
+ * `langOk` is false when an English draft was asked for but the template has no
+ * `body_en` (so the deterministic fast path must not fire). Returns null when
+ * the template is absent / not visible.
+ */
+async function renderTemplateBody(
+  b: GenerateBody,
+  language: Language,
+): Promise<RenderedTemplate | null> {
   if (!b.templateId) return null;
   const userId = await currentUserId();
   if (!userId) return null;
   const tpl = await getTemplate(b.templateId, userId);
   if (!tpl) return null;
+  const langOk = language === "de" || !!tpl.body_en;
   const source = language === "en" && tpl.body_en ? tpl.body_en : tpl.body;
-  const { text } = renderTemplate(source, b.values ?? {}, {
+  const { text, missing } = renderTemplate(source, b.values ?? {}, {
     variables: tpl.variables ?? [],
     sections: (tpl.sections ?? []).map((s) => ({ key: s.key, enabled: true })),
   });
-  return text.trim() || null;
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  return { text: trimmed, missing, langOk };
 }
 
 async function draftGermanLease(b: GenerateBody, templateBody: string | null) {
@@ -69,9 +101,6 @@ async function draftGermanLease(b: GenerateBody, templateBody: string | null) {
       "A German residential lease needs the property address and the net cold rent (Nettokaltmiete).",
     );
   }
-
-  const num = (v: number | undefined) =>
-    v != null && Number.isFinite(Number(v)) ? Number(v) : undefined;
 
   const result = await generateGermanRentalContract(
     {
@@ -99,6 +128,50 @@ async function draftGermanLease(b: GenerateBody, templateBody: string | null) {
   };
 }
 
+/** Best-effort: the curated library wording for the failing guardrail topics. */
+async function curatedClausesFor(topics: string[], language: Language): Promise<string> {
+  const out: string[] = [];
+  for (const type of [...new Set(topics)]) {
+    try {
+      const { clauses } = await listClauses({
+        userId: "",
+        type,
+        scope: "curated",
+        limit: 1,
+      });
+      const c = clauses[0];
+      if (!c) continue;
+      const bodyText = language === "en" && c.content_en ? c.content_en : c.content;
+      out.push(`[${c.title}]\n${bodyText}`);
+    } catch {
+      /* library not seeded / DB down — the guardrail block alone still drives the fix */
+    }
+  }
+  return out.join("\n\n");
+}
+
+/** One bounded pass: fix only the listed guardrail failures, keep the rest verbatim. */
+async function repairGuardrails(
+  draft: string,
+  report: GuardrailReport,
+  language: Language,
+): Promise<string> {
+  const block = formatGuardrailsForPrompt(report);
+  const refs = await curatedClausesFor(
+    report.hardFailures.map((f) => f.topic),
+    language,
+  );
+  const system =
+    language === "en"
+      ? "You are a German Rechtsanwalt. Fix ONLY the listed guardrail violations in the contract below. Change nothing else — every other clause, heading and wording stays byte-for-byte identical. Return ONLY the full corrected contract, no preamble."
+      : "Du bist Fachanwalt für Mietrecht. Behebe AUSSCHLIESSLICH die unten aufgeführten Guardrail-Verstöße im folgenden Vertrag. Ändere sonst nichts — jede andere Klausel, Überschrift und Formulierung bleibt unverändert. Gib NUR den vollständigen korrigierten Vertrag zurück, ohne Vorbemerkung.";
+  const prompt = `${block}
+
+${refs ? `GEPRÜFTE KLAUSELVORLAGEN (Wortlaut übernehmen, an die Vertragsdaten anpassen):\n${refs}\n\n` : ""}VERTRAG:
+${draft}`;
+  return askLLM({ system, prompt, maxTokens: 8192 });
+}
+
 export async function POST(req: NextRequest) {
   try {
     const limited = await enforceRateLimit(req, "generate");
@@ -107,15 +180,45 @@ export async function POST(req: NextRequest) {
     const body = (await req.json()) as GenerateBody;
     const { contractType, party1, party2, keyTerms } = body;
     const language = normaliseLanguage(body.language);
+    const fields = guardrailFieldsOf(body);
 
-    const templateBody = await renderTemplateBody(body, language);
+    const rendered = await renderTemplateBody(body, language);
+    const templateBody = rendered?.text ?? null;
+
+    // ── Deterministic fast path ──────────────────────────────────────────
+    // A fully-filled template in the requested language, with no free-text
+    // asks, needs no model: the template is lawyer-authored, so we substitute
+    // and return. The guardrail check still runs — a failure here is a
+    // template bug worth surfacing.
+    if (rendered && rendered.langOk && rendered.missing.length === 0 && !keyTerms?.trim()) {
+      const guardrails = evaluateGuardrails({
+        contractText: rendered.text,
+        contractType,
+        fields,
+        language,
+      });
+      return NextResponse.json({
+        text: rendered.text,
+        guardrails,
+        rendered: true,
+        templateId: body.templateId ?? null,
+      });
+    }
+
+    // ── Draft ───────────────────────────────────────────────────────────
+    let draftText: string;
+    let leaseMeta: { grounded: boolean; groundingRefs: string[]; retrievedDocs: string[] } | null =
+      null;
 
     if (isGermanResidentialLease(body)) {
       try {
-        return NextResponse.json({
-          ...(await draftGermanLease(body, templateBody)),
-          templateId: body.templateId ?? null,
-        });
+        const out = await draftGermanLease(body, templateBody);
+        draftText = out.text;
+        leaseMeta = {
+          grounded: out.grounded,
+          groundingRefs: out.groundingRefs,
+          retrievedDocs: out.retrievedDocs,
+        };
       } catch (err) {
         if (err instanceof QuotaExhaustedError) {
           throw new AppError(
@@ -126,21 +229,26 @@ export async function POST(req: NextRequest) {
         }
         throw err;
       }
-    }
+    } else {
+      const langName = language === "en" ? "English" : "German (Deutsch)";
+      const clientBlock = keyTerms
+        ? `CLIENT REQUIREMENTS (these take precedence over the starting structure, unless mandatory German law forbids it — then correct it and name the norm):
+${keyTerms}
 
-    const langName = language === "en" ? "English" : "German (Deutsch)";
-    const structureBlock = templateBody
-      ? `You MUST follow this required contract structure and clause wording, adapting only where the client's requirements below demand it:
---- REQUIRED STRUCTURE ---
-${templateBody}
---- END REQUIRED STRUCTURE ---
 `
-      : "";
-    const prompt = `This contract is governed by German law (BGB, and HGB where the parties are merchants). It must be written in ${langName}.
+        : "";
+      const structureBlock = templateBody
+        ? `STARTING STRUCTURE (use as the basis; where the client requirements above differ or ask for more, follow the client):
+--- STARTING STRUCTURE ---
+${templateBody}
+--- END STARTING STRUCTURE ---
+`
+        : "";
+      const prompt = `This contract is governed by German law (BGB, and HGB where the parties are merchants). It must be written in ${langName}.
 
 You are a senior German commercial contracts attorney (Rechtsanwalt). Draft a complete, professional ${contractType} between ${party1} and ${party2} under German law.
 
-${structureBlock}${keyTerms ? `Key requirements from the client:\n${keyTerms}\n` : ""}
+${clientBlock}${structureBlock}
 
 Requirements:
 - Write the full contract with all standard sections for this contract type
@@ -156,9 +264,39 @@ ${language === "en"
 
 Write the complete contract now:`;
 
-    const text = await askLLM({ prompt, maxTokens: 8192 });
+      draftText = await askLLM({ prompt, maxTokens: 8192 });
+    }
 
-    return NextResponse.json({ text, templateId: body.templateId ?? null });
+    // ── Guardrail gate + one bounded repair pass ─────────────────────────
+    let guardrails = evaluateGuardrails({
+      contractText: draftText,
+      contractType,
+      fields,
+      language,
+    });
+    if (!guardrails.ok) {
+      try {
+        const repaired = (await repairGuardrails(draftText, guardrails, language)).trim();
+        if (repaired) {
+          draftText = repaired;
+          guardrails = evaluateGuardrails({
+            contractText: draftText,
+            contractType,
+            fields,
+            language,
+          });
+        }
+      } catch (err) {
+        console.error("[generate] guardrail repair failed:", err);
+      }
+    }
+
+    return NextResponse.json({
+      text: draftText,
+      guardrails,
+      ...(leaseMeta ?? {}),
+      templateId: body.templateId ?? null,
+    });
   } catch (err) {
     return errorResponse(err, "generate");
   }

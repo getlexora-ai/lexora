@@ -32,22 +32,27 @@ export async function POST(req: NextRequest) {
         : null;
 
     if (pb && pb.rules.length > 0) {
-      const { issues, coverage } = await analyseContractWithPlaybook(text, {
+      const { issues, coverage, guardrails } = await analyseContractWithPlaybook(text, {
         language: lang,
         rules: pb.rules.map(toPromptRule),
+        contractType: contractType ?? undefined,
       });
       const clauses: RiskClause[] = issues.map((c, i) => ({ ...c, id: `clause-${i}-${Date.now()}` }));
       return NextResponse.json({
         clauses,
         coverage,
+        guardrails,
         playbook: { id: pb.playbook.id, name: pb.playbook.name, is_approved: pb.playbook.is_approved },
       });
     }
 
-    // No playbook — byte-identical to the pre-Wave-4 behaviour.
-    const issues = await analyseContract(text, lang);
+    // No playbook — the guardrail check still runs for a known contract type.
+    const { issues, guardrails } = await analyseContract(text, {
+      language: lang,
+      contractType: contractType ?? undefined,
+    });
     const clauses: RiskClause[] = issues.map((c, i) => ({ ...c, id: `clause-${i}-${Date.now()}` }));
-    return NextResponse.json({ clauses });
+    return NextResponse.json({ clauses, guardrails });
   } catch (err) {
     return errorResponse(err, "analyse");
   }

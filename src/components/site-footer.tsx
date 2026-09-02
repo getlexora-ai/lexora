@@ -14,7 +14,10 @@ const COLUMNS: { heading: string; items: (string | FooterLink)[] }[] = [
     heading: "Product",
     items: ["Analysis", "Suggested wording", "Dashboard", "Clause library"],
   },
-  { heading: "Company", items: ["About", "Security", "Careers", "Contact"] },
+  {
+    heading: "Company",
+    items: ["About", "Security", "Careers", { label: "Contact", href: "/contact" }],
+  },
   {
     heading: "Legal",
     items: [

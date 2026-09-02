@@ -26,22 +26,22 @@ export default function ImpressumPage() {
     >
       <div className="legal-prose">
         <h2 id="provider">Service provider</h2>
+        <p>
+          Lexora is operated as a sole proprietorship (Einzelunternehmen). Lexora
+          is a trade name; the provider is the natural person named below, who
+          acts personally.
+        </p>
         <dl>
-          <dt>Company</dt>
+          <dt>Provider</dt>
           <dd>
-            <Fill value={COMPANY.legalName}>Registered company name</Fill>
+            <Fill value={COMPANY.legalName}>Operator&rsquo;s full name</Fill>
+            {COMPANY.legalName ? " (trading as Lexora)" : ""}
           </dd>
           <dt>Address</dt>
           <dd>
             <FillLines value={COMPANY.addressLines}>
               Street and number, postal code and city, country
             </FillLines>
-          </dd>
-          <dt>Represented by</dt>
-          <dd>
-            <Fill value={COMPANY.representedBy}>
-              Managing director(s) or authorised representative(s)
-            </Fill>
           </dd>
         </dl>
 
@@ -51,39 +51,46 @@ export default function ImpressumPage() {
           <dd>
             <Fill value={COMPANY.email}>contact address</Fill>
           </dd>
-          <dt>Telephone</dt>
+          <dt>Contact form</dt>
           <dd>
-            <Fill value={COMPANY.phone}>telephone number</Fill>
+            <Link href="/contact">lexora contact form</Link>
           </dd>
         </dl>
+        <p>
+          For rapid and direct communication, write to the email address above
+          or use our <Link href="/contact">contact form</Link>; messages sent
+          through the form are delivered to the same address. We answer
+          enquiries within two business days.
+        </p>
 
         <h2 id="register">Commercial register and VAT</h2>
-        <dl>
-          <dt>Register court</dt>
-          <dd>
-            <Fill value={COMPANY.registerCourt}>
-              Registergericht (e.g. Amtsgericht Charlottenburg)
-            </Fill>
-          </dd>
-          <dt>Register number</dt>
-          <dd>
-            <Fill value={COMPANY.registerNumber}>HRB number</Fill>
-          </dd>
-          <dt>VAT ID</dt>
-          <dd>
-            <Fill value={COMPANY.vatId}>
-              USt-IdNr. under section 27a of the German VAT Act
-            </Fill>
-          </dd>
-        </dl>
+        <p>
+          As a sole proprietorship that is not a registered merchant, the
+          provider is not entered in the commercial register
+          (Handelsregister); there is therefore no register court or register
+          number.
+        </p>
+        <p>
+          {COMPANY.smallBusiness ? (
+            <>
+              Under section 19 of the German VAT Act (UStG), the provider is
+              treated as a small business (Kleinunternehmer). No value added tax
+              is charged and no VAT identification number (USt-IdNr. under
+              section 27a UStG) has been issued.
+            </>
+          ) : (
+            <>
+              VAT identification number (USt-IdNr. under section 27a of the
+              German VAT Act):{" "}
+              <Fill value={COMPANY.vatId}>USt-IdNr.</Fill>
+            </>
+          )}
+        </p>
 
         <h2 id="responsible">Responsible for editorial content</h2>
         <p>
-          Responsible for the content of this website under section 18(2) MStV:{" "}
-          <Fill value={COMPANY.representedBy}>
-            name and address of the responsible person
-          </Fill>
-          , at the address given above.
+          Responsible for the content of this website under section 18(2) MStV
+          is the provider named above, at the address given above.
         </p>
 
         <h2 id="not-a-law-firm">No legal services</h2>

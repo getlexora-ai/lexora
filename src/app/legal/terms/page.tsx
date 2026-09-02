@@ -158,8 +158,11 @@ export default function TermsPage() {
         <h2 id="pricing">7. Plans, prices, payment</h2>
         <p>
           7.1 Prices are those shown on the order page at the time of your order.
-          Prices to entrepreneurs are net of statutory value added tax; prices to
-          consumers are shown inclusive of value added tax.
+          As the provider is a small business within the meaning of section 19 of
+          the German VAT Act (Kleinunternehmer), no value added tax is shown or
+          charged. Should this status change, prices to entrepreneurs will be net
+          of statutory value added tax and prices to consumers will be shown
+          inclusive of it.
         </p>
         <p>
           7.2 Fees for a paid plan are due in advance for the billing period
@@ -168,8 +171,7 @@ export default function TermsPage() {
         </p>
         <p>
           7.3 We may change prices for a future billing period. We will give you
-          notice at least{" "}
-          <Fill value={null}>notice period, for example 30 days</Fill> before the
+          notice at least 30 days before the
           change takes effect. If you do not accept the change, you may terminate
           with effect from the end of the current billing period.
         </p>
@@ -437,8 +439,7 @@ export default function TermsPage() {
           interests into account.
         </p>
         <p>
-          19.2 We will notify you of the new version in text form at least{" "}
-          <Fill value={null}>notice period, for example 30 days</Fill> before it
+          19.2 We will notify you of the new version in text form at least 30 days before it
           takes effect. If you do not object in text form before the new version
           takes effect, your continued use counts as acceptance; we will point
           this out in the notice. If you object, either party may terminate the
@@ -457,14 +458,13 @@ export default function TermsPage() {
         <p>
           20.2 If you are an entrepreneur, a legal person under public law, or a
           special fund under public law, the place of jurisdiction for all
-          disputes arising from the contract is{" "}
-          <Fill value={null}>the seat of the company</Fill>. We may also sue at
-          your general place of jurisdiction.
+          disputes arising from the contract is our registered seat as stated in
+          our <Link href="/legal/impressum">legal notice</Link>. We may also sue
+          at your general place of jurisdiction.
         </p>
         <p>
           20.3 These terms are provided in English. If we provide a German
-          version and there is a conflict, the{" "}
-          <Fill value={null}>German or English</Fill> version prevails; this
+          version and there is a conflict, the English version prevails; this
           choice does not affect mandatory consumer protection in your language.
         </p>
         <p>

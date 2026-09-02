@@ -62,33 +62,58 @@ export const LEGAL_DOCS: LegalDoc[] = [
  * banner on every legal page marks them as a draft.
  */
 export const COMPANY = {
-  reviewed: null as string | null,
+  reviewed: "2 September 2026" as string | null,
 
-  legalName: null as string | null, // e.g. "Lexora GmbH"
+  /**
+   * Legal form of the operator. Currently a sole proprietorship
+   * (Einzelunternehmen), pending final confirmation. If this becomes a GmbH or
+   * UG, restore the commercial-register fields below and the register section of
+   * the Impressum, and revisit the VAT wording (Kleinunternehmer no longer
+   * applies once turnover crosses the section 19 UStG threshold).
+   */
+  legalForm: "Einzelunternehmen" as "Einzelunternehmen" | "GmbH" | "UG",
+
+  /**
+   * Small business under section 19 UStG: no VAT is shown or charged and no
+   * USt-IdNr. is issued. Set to false once the operator opts into (or is
+   * required to charge) VAT, then fill `vatId`.
+   */
+  smallBusiness: true,
+
+  legalName: "Ajay Vaidhyanathan Swaminathan", // sole trader: the operator's full personal name
   tradeName: "Lexora",
-  representedBy: null as string | null, // managing directors / authorised representatives
+  representedBy: null as string | null, // sole trader: same as legalName
 
-  addressLines: null as string[] | null, // ["Example-Straße 1", "10115 Berlin", "Germany"]
+  // Rendered line-by-line by <FillLines>, so this must stay an array of strings.
+  addressLines: ["Karl-Marx-Ring 90", "81735 München", "Germany"],
 
-  registerCourt: null as string | null, // Registergericht, e.g. "Amtsgericht Charlottenburg"
+  // Not applicable while `legalForm` is "Einzelunternehmen" (no Handelsregister
+  // entry). Fill and re-enable the Impressum register section on incorporation.
+  registerCourt: null as string | null, // Registergericht, e.g. "Amtsgericht München"
   registerNumber: null as string | null, // e.g. "HRB 123456"
-  vatId: null as string | null, // USt-IdNr. per section 27a UStG
+  vatId: null as string | null, // USt-IdNr. per section 27a UStG; null while smallBusiness
 
-  email: null as string | null, // general contact
-  privacyEmail: null as string | null, // data protection contact
+  email: "hello@getlexora.de", // general contact
+  privacyEmail: "hello@getlexora.de", // data protection contact; falls back to `email`
+  // Deliberately omitted from the Impressum: rapid, direct contact is provided
+  // by the email address above plus the /contact form (both reach the same
+  // inbox). Set a number here to add a "Telephone" row back to the Impressum.
   phone: null as string | null,
 
   /** Data protection officer, or null if none is legally required. */
   dpo: null as string | null,
 
   /** Competent data protection supervisory authority for the registered seat. */
-  supervisoryAuthority: null as string | null,
+  supervisoryAuthority:
+    "Bayerisches Landesamt für Datenschutzaufsicht (BayLDA), Promenade 18, 91522 Ansbach, Germany" as
+      | string
+      | null,
 
   /** Where the production app is hosted. */
-  hostingProvider: null as string | null,
-  /** Payment processor, once billing is live. */
+  hostingProvider: "Railway Corp." as string | null,
+  /** Payment processor, once billing is live (planned: Polar). */
   billingProvider: null as string | null,
-  /** Transactional email provider. */
+  /** Transactional email provider, if any beyond the auth provider's own mail. */
   emailProvider: null as string | null,
 } as const;
 
@@ -105,6 +130,12 @@ export type SubProcessor = {
  */
 export const SUBPROCESSORS: SubProcessor[] = [
   {
+    name: "Railway Corp.",
+    purpose: "Hosting the web application and storing application data",
+    location: "USA, with EU (Amsterdam) deployment region",
+    safeguard: "EU Standard Contractual Clauses",
+  },
+  {
     name: "Clerk, Inc.",
     purpose: "User authentication and account management",
     location: "USA",
@@ -118,8 +149,7 @@ export const SUBPROCESSORS: SubProcessor[] = [
   },
   {
     name: "Google (Gemini API, Google Ireland Ltd. / Google LLC)",
-    purpose:
-      "AI analysis of contract text and generation of suggested wording",
+    purpose: "AI analysis of contract text and generation of suggested wording",
     location: "EU and USA",
     safeguard: "EU Standard Contractual Clauses",
   },

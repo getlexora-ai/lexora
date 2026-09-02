@@ -190,8 +190,7 @@ export default function DpaPage() {
         </p>
         <p>
           7.3 The processor will inform the controller of any intended addition
-          or replacement of a sub-processor at least{" "}
-          <Fill value={null}>notice period, for example 30 days</Fill> in
+          or replacement of a sub-processor at least 30 days in
           advance, giving the controller the opportunity to object on reasonable
           data protection grounds. If the controller objects and the parties
           cannot agree, the controller may terminate the affected service for the
@@ -233,8 +232,7 @@ export default function DpaPage() {
           personal data processed on the controller&apos;s behalf and delete
           existing copies, unless Union or Member State law requires storage.
           Where deletion cannot be immediate for backups, the data is isolated
-          from further processing and deleted on the next backup rotation, within{" "}
-          <Fill value={null}>backup retention period</Fill>. The processor will
+          from further processing and deleted on the next backup rotation, within 30 days. The processor will
           confirm deletion in text form on request.
         </p>
 
@@ -248,8 +246,7 @@ export default function DpaPage() {
         <p>
           11.2 The controller may carry out an audit, including inspections, once
           per year and additionally where there is a specific cause, on
-          reasonable prior notice of at least{" "}
-          <Fill value={null}>notice period, for example 14 days</Fill>, during
+          reasonable prior notice of at least 14 days, during
           business hours, without disproportionate disruption to the
           processor&apos;s operations, and subject to confidentiality. The
           controller bears its own audit costs.
@@ -305,37 +302,16 @@ export default function DpaPage() {
                 <td>{p.safeguard}</td>
               </tr>
             ))}
-            <tr>
-              <td>
-                <Fill value={COMPANY.hostingProvider}>Hosting provider</Fill>
-              </td>
-              <td>Hosting the web application and storing application data</td>
-              <td>
-                <Fill value={null}>region</Fill>
-              </td>
-              <td>
-                <Fill value={null}>safeguard, if outside the EEA</Fill>
-              </td>
-            </tr>
-            <tr>
-              <td>
-                <Fill value={COMPANY.emailProvider}>Email provider</Fill>
-              </td>
-              <td>Sending transactional email tied to the account</td>
-              <td>
-                <Fill value={null}>region</Fill>
-              </td>
-              <td>
-                <Fill value={null}>safeguard, if outside the EEA</Fill>
-              </td>
-            </tr>
           </tbody>
         </table>
         <p>
           <small>
             This annex mirrors the recipients table in the{" "}
             <Link href="/legal/privacy">privacy policy</Link> and is kept in sync
-            with it.
+            with it. Transactional email tied to the account is sent by the
+            authentication provider (Clerk) listed above. No payment
+            sub-processor is engaged yet; one will be added here before paid
+            plans are offered.
           </small>
         </p>
 
@@ -365,12 +341,8 @@ export default function DpaPage() {
           <li>
             <strong>Pseudonymisation and minimisation</strong>: the uploaded
             original file is not retained by default; only extracted text needed
-            for the analysis is stored;{" "}
-            <Fill value={null}>
-              state whether direct identifiers are masked before transmission to
-              the AI provider, once that feature ships
-            </Fill>
-            .
+            for the analysis is stored; direct identifiers in the extracted text
+            are not currently masked before transmission to the AI provider.
           </li>
           <li>
             <strong>Availability and resilience</strong>: managed, redundant
@@ -383,8 +355,8 @@ export default function DpaPage() {
           </li>
           <li>
             <strong>Restore</strong>: documented procedure to restore access to
-            data after an incident;{" "}
-            <Fill value={null}>restore objective, for example RPO and RTO</Fill>.
+            data after an incident, with a target recovery point objective of 24
+            hours and a target recovery time objective of 24 hours.
           </li>
           <li>
             <strong>Vendor management</strong>: data processing agreements with

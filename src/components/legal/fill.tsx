@@ -28,7 +28,7 @@ export function FillLines({
   value,
   children,
 }: {
-  value?: string[] | null;
+  value?: readonly string[] | null;
   children: ReactNode;
 }) {
   if (value && value.length > 0) {

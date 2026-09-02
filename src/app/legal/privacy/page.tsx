@@ -75,12 +75,16 @@ export default function PrivacyPage() {
 
         <h2 id="dpo">2. Data protection officer</h2>
         <p>
-          <Fill value={COMPANY.dpo}>
-            We have appointed a data protection officer, reachable at the address
-            above. If no officer is legally required, this section states that no
-            officer has been appointed and gives the data protection contact
-            instead.
-          </Fill>
+          {COMPANY.dpo ? (
+            <Fill value={COMPANY.dpo}>data protection officer contact</Fill>
+          ) : (
+            <>
+              We are not required to appoint a data protection officer under
+              Article 37 GDPR or section 38 of the German Federal Data Protection
+              Act (BDSG), and have not appointed one voluntarily. For any data
+              protection matter, contact us using the details in section 1.
+            </>
+          )}
         </p>
 
         <h2 id="rights">3. Your rights</h2>
@@ -128,10 +132,7 @@ export default function PrivacyPage() {
           </dd>
           <dt>Retention</dt>
           <dd>
-            <Fill value={null}>
-              log retention period, for example 7 to 14 days, then deletion or
-              anonymisation
-            </Fill>
+            7 days, then deletion or anonymisation
           </dd>
           <dt>Recipients</dt>
           <dd>
@@ -255,6 +256,12 @@ export default function PrivacyPage() {
 
         <h2 id="billing">10. Billing</h2>
         <p>
+          Paid plans are not offered yet, so no billing data is processed today.
+          This section describes what will happen once billing goes live. We will
+          update this policy, and name the payment provider, before any charge is
+          taken.
+        </p>
+        <p>
           If you take a paid plan, we process your billing name and address, your
           VAT identification number where applicable, the plan and amount, and
           payment metadata returned by our payment provider. We do not receive or
@@ -270,8 +277,8 @@ export default function PrivacyPage() {
           </dd>
           <dt>Recipients</dt>
           <dd>
-            <Fill value={COMPANY.billingProvider}>payment provider</Fill>, our
-            tax advisers, and the tax authorities where required
+            {COMPANY.billingProvider ?? "the payment provider named at checkout"},
+            our tax advisers, and the tax authorities where required
           </dd>
           <dt>Retention</dt>
           <dd>
@@ -287,16 +294,28 @@ export default function PrivacyPage() {
           content of your message and your contact details to answer it and, if
           relevant, to follow up.
         </p>
+        <p>
+          If you use the <Link href="/contact">contact form</Link> on our
+          website, we process the name, email address, and message you enter.
+          Each submission is stored in our database (Neon, see section 13) and a
+          copy is delivered to our mailbox by our email delivery provider,
+          Resend (Resend, Inc., United States), acting as our processor under
+          Standard Contractual Clauses. We also record the IP address the
+          submission was sent from, for the abuse prevention described in
+          section 12.
+        </p>
         <dl>
           <dt>Legal basis</dt>
           <dd>
             Article 6(1)(b) GDPR where the request relates to the contract,
-            otherwise Article 6(1)(f) GDPR (our interest in answering enquiries)
+            otherwise Article 6(1)(f) GDPR (our interest in answering enquiries
+            and keeping the form free of abuse)
           </dd>
           <dt>Retention</dt>
           <dd>
-            for as long as needed to handle the request and any follow-up, then
-            deletion subject to statutory retention duties
+            for as long as needed to handle the request and any follow-up, and
+            in any case deleted within 12 months of the matter being closed,
+            subject to statutory retention duties
           </dd>
         </dl>
 
@@ -344,44 +363,17 @@ export default function PrivacyPage() {
                 <td>{p.safeguard}</td>
               </tr>
             ))}
-            <tr>
-              <td>
-                <Fill value={COMPANY.hostingProvider}>Hosting provider</Fill>
-              </td>
-              <td>Hosting the web application</td>
-              <td>
-                <Fill value={null}>region</Fill>
-              </td>
-              <td>
-                <Fill value={null}>safeguard, if outside the EEA</Fill>
-              </td>
-            </tr>
-            <tr>
-              <td>
-                <Fill value={COMPANY.emailProvider}>Email provider</Fill>
-              </td>
-              <td>Sending transactional email</td>
-              <td>
-                <Fill value={null}>region</Fill>
-              </td>
-              <td>
-                <Fill value={null}>safeguard, if outside the EEA</Fill>
-              </td>
-            </tr>
-            <tr>
-              <td>
-                <Fill value={COMPANY.billingProvider}>Payment provider</Fill>
-              </td>
-              <td>Processing payments</td>
-              <td>
-                <Fill value={null}>region</Fill>
-              </td>
-              <td>
-                <Fill value={null}>safeguard, if outside the EEA</Fill>
-              </td>
-            </tr>
           </tbody>
         </table>
+        <p>
+          Transactional email tied to your account (for example sign-in links and
+          security notices) is sent by our authentication provider, Clerk, listed
+          above. We do not currently use a separate email-marketing provider.
+          Paid plans are not yet available; when billing goes live we will add
+          the payment provider to this list and to the{" "}
+          <Link href="/legal/dpa">data processing agreement</Link> before any
+          charge is taken.
+        </p>
 
         <h2 id="transfers">14. Transfers outside the EEA</h2>
         <p>
@@ -401,16 +393,14 @@ export default function PrivacyPage() {
         </p>
         <ul>
           <li>
-            Account data is deleted within{" "}
-            <Fill value={null}>number of days</Fill> after you close your account.
+            Account data is deleted within 30 days after you close your account.
           </li>
           <li>
             Documents and their extracted text are deleted when you delete them,
             or when your account is closed.
           </li>
           <li>
-            Backups are rotated and overwritten within{" "}
-            <Fill value={null}>backup retention period</Fill>.
+            Backups are rotated and overwritten within 30 days.
           </li>
           <li>
             Invoices and accounting records are kept for the statutory periods

@@ -478,3 +478,24 @@ alter table contracts
 alter table risk_clauses
   add constraint risk_clauses_playbook_rule_id_fk
   foreign key (playbook_rule_id) references playbook_rules (id) on delete set null;
+
+-- ============================================================
+-- Consent events (see db/010_consent_events.sql)
+-- ============================================================
+-- One row per (user, policy version): the user's acceptance of the legal
+-- documents in force at the time (Impressum / Privacy / Terms / DPA).
+create table consent_events (
+  id             bigint generated always as identity primary key,
+  user_id        text not null,
+  policy_version text not null,
+  docs           text[] not null default '{}',
+  method         text not null default 'signup',
+  ip             text,
+  user_agent     text,
+  created_at     timestamptz not null default now()
+);
+
+create index consent_events_user_idx
+  on consent_events (user_id, created_at desc);
+create unique index consent_events_user_version_uniq
+  on consent_events (user_id, policy_version);

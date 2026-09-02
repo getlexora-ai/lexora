@@ -1,7 +1,7 @@
 import { ArrowRight, History, ScanLine, Sparkles } from "lucide-react";
 import { Navbar } from "@/components/navbar";
-import { BrandLockup } from "@/components/brand-mark";
-import { RdgDisclaimerBox, RdgFooterNotice } from "@/components/rdg-notice";
+import { RdgDisclaimerBox } from "@/components/rdg-notice";
+import { SiteFooter } from "@/components/site-footer";
 import { ClauseDemo } from "@/components/landing/clause-demo";
 import { HeroPreview } from "@/components/landing/hero-preview";
 import { Pricing } from "@/components/landing/pricing";
@@ -53,15 +53,6 @@ const STEPS = [
     title: "Apply & export",
     body: "Apply the suggestions you want, keep a versioned trail, and export a clean document.",
   },
-];
-
-const FOOTER_COLUMNS = [
-  {
-    heading: "Product",
-    items: ["Analysis", "Suggested wording", "Dashboard", "Clause library"],
-  },
-  { heading: "Company", items: ["About", "Security", "Careers", "Contact"] },
-  { heading: "Legal", items: ["Terms", "Privacy", "DPA", "Legal notice / RDG"] },
 ];
 
 /** Mono eyebrow + outcome headline. The one section-head shape on the page. */
@@ -343,36 +334,7 @@ export default function LandingPage() {
       </main>
 
       {/* ══════════════ FOOTER ══════════════ */}
-      <footer className="border-t border-border pt-11 pb-13">
-        <div className={`${SHELL} grid gap-6.5 min-[720px]:grid-cols-[1.4fr_1fr_1fr_1fr]`}>
-          <div>
-            <BrandLockup />
-            <p className="mt-3 max-w-[34ch] text-[13px] text-text-2">
-              AI-assisted contract analysis for people who sign things. A tool
-              that supports your own review, from NDAs to MSAs.
-            </p>
-          </div>
-
-          {FOOTER_COLUMNS.map(({ heading, items }) => (
-            <div key={heading}>
-              <h4 className="mb-2.5 font-mono text-[10px] font-medium tracking-[0.12em] text-text-3 uppercase">
-                {heading}
-              </h4>
-              <ul className="flex flex-col gap-1.5">
-                {items.map((item) => (
-                  <li key={item} className="text-[13px] text-text-2">
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-
-          <div className="col-span-full mt-4">
-            <RdgFooterNotice />
-          </div>
-        </div>
-      </footer>
+      <SiteFooter />
     </>
   );
 }

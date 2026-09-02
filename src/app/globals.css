@@ -762,6 +762,117 @@
       transform: none;
     }
   }
+
+  /* Long-form legal prose (Impressum, Privacy policy, Terms, DPA). One column,
+     token-driven, so it re-themes with the rest of the site. Headings clear the
+     sticky marketing bar when jumped to from the on-page contents. */
+  .legal-prose {
+    color: var(--text-2);
+    font-size: 15px;
+    line-height: 1.7;
+  }
+  .legal-prose > :first-child {
+    margin-top: 0;
+  }
+  .legal-prose h2 {
+    color: var(--text);
+    font-size: 1.0625rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin: 2.6em 0 0.75em;
+    scroll-margin-top: 88px;
+  }
+  .legal-prose h3 {
+    color: var(--text);
+    font-size: 0.9375rem;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    margin: 1.9em 0 0.55em;
+    scroll-margin-top: 88px;
+  }
+  .legal-prose h2 + p,
+  .legal-prose h3 + p {
+    margin-top: 0;
+  }
+  .legal-prose p {
+    margin: 0.95em 0;
+  }
+  .legal-prose ul,
+  .legal-prose ol {
+    margin: 0.95em 0;
+    padding-left: 1.4em;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4em;
+  }
+  .legal-prose li::marker {
+    color: var(--text-3);
+  }
+  .legal-prose a {
+    color: var(--brand);
+    text-underline-offset: 2px;
+    text-decoration: underline;
+    text-decoration-color: color-mix(in oklab, var(--brand) 38%, transparent);
+  }
+  .legal-prose a:hover {
+    text-decoration-color: var(--brand);
+  }
+  .legal-prose strong {
+    color: var(--text);
+    font-weight: 650;
+  }
+  .legal-prose small {
+    font-size: 12.5px;
+    color: var(--text-3);
+  }
+  .legal-prose hr {
+    margin: 2.4em 0;
+    border: 0;
+    border-top: 1px solid var(--border);
+  }
+  .legal-prose dl {
+    margin: 1em 0;
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.4em 1.4em;
+  }
+  .legal-prose dt {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    padding-top: 3px;
+  }
+  .legal-prose dd {
+    margin: 0;
+  }
+  .legal-prose table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1.2em 0;
+    font-size: 13px;
+  }
+  .legal-prose th,
+  .legal-prose td {
+    border: 1px solid var(--border);
+    padding: 8px 10px;
+    text-align: left;
+    vertical-align: top;
+  }
+  .legal-prose th {
+    background: var(--surface-2);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .legal-prose .lead {
+    font-size: 16px;
+    color: var(--text-2);
+  }
 }
 
 /* ── Quill editor integration ───────────────────────────────────────────── */

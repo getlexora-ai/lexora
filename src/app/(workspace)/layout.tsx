@@ -1,6 +1,7 @@
 import { Navbar } from "@/components/navbar";
 import { MobileBrandBar, Sidebar } from "@/components/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { RecordConsent } from "@/components/legal/record-consent";
 
 /**
  * The workspace frame: a 252px sidebar above 940px, the compact brand row
@@ -22,6 +23,7 @@ export default function DashboardLayout({
         <main className="min-w-0 flex-1">{children}</main>
       </div>
       <ThemeToggle floating />
+      <RecordConsent />
     </div>
   );
 }

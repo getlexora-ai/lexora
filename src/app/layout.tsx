@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { Figtree, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { CookieConsent } from "@/components/cookie-consent";
 
 /* Two-face system:
    — Figtree         workhorse. All UI, all body, all data-dense surfaces.
@@ -73,6 +74,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <ClerkProvider appearance={clerkAppearance}>
           <TooltipProvider>{children}</TooltipProvider>
+          <CookieConsent />
         </ClerkProvider>
       </body>
     </html>

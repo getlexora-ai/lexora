@@ -6,7 +6,7 @@ import {
   AuthTopBar,
   CLERK_FLUSH_APPEARANCE,
 } from "@/components/auth-shell";
-import { RdgMicro } from "@/components/rdg-notice";
+import { SignupConsent } from "@/components/legal/signup-consent";
 
 export default function SignUpPage() {
   return (
@@ -18,7 +18,7 @@ export default function SignUpPage() {
           lede="Start a 14-day trial. No card required. Analyse contracts, see suggested wording, keep the trail."
         >
           <SignUp appearance={CLERK_FLUSH_APPEARANCE} />
-          <RdgMicro variant="signup" />
+          <SignupConsent />
         </AuthFormColumn>
 
         <AuthBrandPanel

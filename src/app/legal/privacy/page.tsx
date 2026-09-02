@@ -298,11 +298,10 @@ export default function PrivacyPage() {
           If you use the <Link href="/contact">contact form</Link> on our
           website, we process the name, email address, and message you enter.
           Each submission is stored in our database (Neon, see section 13) and a
-          copy is delivered to our mailbox by our email delivery provider,
-          Resend (Resend, Inc., United States), acting as our processor under
-          Standard Contractual Clauses. We also record the IP address the
-          submission was sent from, for the abuse prevention described in
-          section 12.
+          copy is delivered by email to our own mailbox over an encrypted
+          connection; the message therefore also passes through the provider
+          that hosts that mailbox. We also record the IP address the submission
+          was sent from, for the abuse prevention described in section 12.
         </p>
         <dl>
           <dt>Legal basis</dt>

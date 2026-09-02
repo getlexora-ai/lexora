@@ -28,11 +28,14 @@ export function ContactForm() {
     if (!canSubmit) return;
     setStatus("sending");
     setError(null);
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), 15_000);
     try {
       const res = await fetch("/api/contact", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, email, message, website }),
+        signal: abort.signal,
       });
       const data = (await res.json().catch(() => ({}))) as {
         message?: string;
@@ -45,7 +48,15 @@ export function ContactForm() {
       setStatus("sent");
     } catch (err) {
       setStatus("error");
-      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setError(
+        abort.signal.aborted
+          ? "The request timed out. Please try again, or email us directly."
+          : err instanceof Error
+            ? err.message
+            : "Something went wrong.",
+      );
+    } finally {
+      clearTimeout(timer);
     }
   }
 

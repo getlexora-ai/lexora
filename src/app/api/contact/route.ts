@@ -102,8 +102,14 @@ export async function POST(req: NextRequest) {
     };
 
     const id = await saveContactMessage(input);
-    // Non-fatal: the message is already stored.
-    await forwardContactEmail(id, input);
+
+    // The message is safely stored, so respond now and email a copy in the
+    // background. Blocking the response on SMTP would leave the caller spinning
+    // whenever the mail server is slow or unreachable. Railway runs a
+    // persistent `next start`, so this promise finishes after the response.
+    void forwardContactEmail(id, input).catch((err) => {
+      console.error("[contact] background forward failed:", err);
+    });
 
     return NextResponse.json({ ok: true });
   } catch (err) {

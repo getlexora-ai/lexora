@@ -67,6 +67,11 @@ function transporter(): Transporter | null {
     port,
     secure,
     auth: { user, pass },
+    // Cloud hosts + IONOS/465 can stall on connect. Bound every phase so a
+    // hung SMTP server can never wedge the caller.
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 15_000,
   });
   return globalForMail.mailer;
 }

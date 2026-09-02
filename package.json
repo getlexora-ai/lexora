@@ -11,6 +11,7 @@
     "rag:ingest": "node scripts/rag-ingest.mjs",
     "rag:eval": "node scripts/rag-eval.mjs",
     "guardrails:check": "node scripts/guardrail-check.mjs",
+    "smtp:check": "node scripts/smtp-check.mjs",
     "seed:library": "node scripts/seed-library.mjs",
     "seed:templates": "node scripts/seed-templates.mjs",
     "seed:playbooks": "node scripts/seed-playbooks.mjs",

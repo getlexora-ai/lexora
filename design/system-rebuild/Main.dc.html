@@ -8,343 +8,446 @@
 <x-dc>
 <helmet>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Manrope:wght@400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
     * { box-sizing: border-box; }
     body { margin: 0; }
 
     .wrap {
-      --bg: #0a0a12;
-      --text: #f3f2fb;
-      --text-2: #b3b0c9;
-      --text-3: #7d7a99;
-      --glass: rgba(255,255,255,0.055);
-      --glass-2: rgba(255,255,255,0.09);
-      --glass-line: rgba(255,255,255,0.11);
-      --glass-line-strong: rgba(255,255,255,0.18);
-      --risk-high: #ff8a80;
-      --risk-high-soft: rgba(255,90,74,0.14);
-      --risk-high-line: rgba(255,90,74,0.32);
-      --risk-med: #ffc978;
-      --risk-med-soft: rgba(255,181,64,0.14);
-      --risk-med-line: rgba(255,181,64,0.32);
-      --risk-low: #7fe8b8;
-      --risk-low-soft: rgba(60,224,150,0.14);
-      --risk-low-line: rgba(60,224,150,0.32);
+      /* Neutrals carry a whisper of the brand hue at near-zero chroma, so
+         "gray" and "brand" read as one color story instead of two. */
+      --bg: oklch(98.6% 0.003 var(--brand-h));
+      --surface: oklch(100% 0 0);
+      --surface-2: oklch(97.2% 0.004 var(--brand-h));
+      --border: oklch(90.5% 0.006 var(--brand-h));
+      --border-soft: oklch(94.5% 0.005 var(--brand-h));
+      --text: oklch(21% 0.012 var(--brand-h));
+      --text-2: oklch(45% 0.012 var(--brand-h));
+      --text-3: oklch(61% 0.01 var(--brand-h));
 
-      font-family: "Manrope", ui-sans-serif, system-ui, sans-serif;
+      /* One hue, ten shades — the whole "brand color system". */
+      --brand-50:  oklch(97%   var(--brand-c) var(--brand-h));
+      --brand-100: oklch(92.5% var(--brand-c) var(--brand-h));
+      --brand-200: oklch(85%   var(--brand-c) var(--brand-h));
+      --brand-300: oklch(75%   var(--brand-c) var(--brand-h));
+      --brand-400: oklch(64%   var(--brand-c) var(--brand-h));
+      --brand-500: oklch(54%   var(--brand-c) var(--brand-h));
+      --brand-600: oklch(46%   var(--brand-c) var(--brand-h));
+      --brand-700: oklch(38%   var(--brand-c) var(--brand-h));
+      --brand-800: oklch(29%   var(--brand-c) var(--brand-h));
+      --brand-900: oklch(21%   var(--brand-c) var(--brand-h));
+
+      /* Semantic risk — kept low-chroma and small on purpose. They label
+         data; they don't compete with the one brand color for attention. */
+      --risk-high: oklch(54% 0.13 26);
+      --risk-med:  oklch(58% 0.11 75);
+      --risk-low:  oklch(51% 0.09 149);
+
+      font-family: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
       background: var(--bg);
       color: var(--text);
       width: 100%;
-      position: relative;
-      overflow: hidden;
     }
-    .wrap a { color: var(--accent2); text-decoration: none; }
-    .wrap a:hover { opacity: 0.8; }
+    .wrap a { color: var(--brand-600); text-decoration: none; }
+    .wrap a:hover { color: var(--brand-700); }
+    .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
 
-    .display { font-family: "Sora", ui-sans-serif, sans-serif; }
-
-    /* aurora mesh backdrop */
-    .aurora { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
-    .aurora::before, .aurora::after {
-      content: ""; position: absolute; border-radius: 999px; filter: blur(90px);
-    }
-    .aurora::before {
-      width: 720px; height: 560px; top: -220px; left: -140px;
-      background: radial-gradient(circle, var(--accent) 0%, transparent 68%);
-      opacity: 0.55;
-    }
-    .aurora::after {
-      width: 640px; height: 560px; top: 120px; right: -180px;
-      background: radial-gradient(circle, var(--accent2) 0%, transparent 68%);
-      opacity: 0.42;
+    .grad-text {
+      background: linear-gradient(100deg, var(--brand-700), var(--brand-400));
+      -webkit-background-clip: text; background-clip: text; color: transparent;
     }
 
-    .content { position: relative; z-index: 1; }
-
-    /* ── nav ─────────────────────────────────────────────────────────── */
-    .nav {
-      display: flex; align-items: center; gap: 34px;
-      padding: 0 40px; height: 68px;
-      border-bottom: 1px solid var(--glass-line);
-      background: rgba(10,10,18,0.5);
-      backdrop-filter: blur(18px);
+    /* ── marketing nav ───────────────────────────────────────────────── */
+    .mnav {
+      display: flex; align-items: center; gap: 36px;
+      padding: 0 40px; height: 72px;
+      border-bottom: 1px solid var(--border-soft);
     }
-    .brand { display: flex; align-items: center; gap: 10px; margin-right: 8px; }
+    .brand { display: flex; align-items: center; gap: 9px; margin-right: 6px; }
     .brand-mark {
-      width: 30px; height: 30px; flex: none; border-radius: 9px;
-      display: flex; align-items: center; justify-content: center;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      box-shadow: 0 0 22px -4px var(--accent);
+      width: 27px; height: 27px; flex: none; border-radius: 7px;
+      background: var(--brand-600); display: flex; align-items: center; justify-content: center;
     }
-    .brand-mark svg { width: 16px; height: 16px; color: #0a0a12; }
-    .brand-word { font-family: "Sora", sans-serif; font-weight: 700; font-size: 17px; letter-spacing: -0.01em; }
-    .nav-links { display: flex; align-items: center; gap: 26px; }
-    .nav-link { font-size: 13.5px; font-weight: 500; color: var(--text-3); padding: 4px 0; border-bottom: 2px solid transparent; }
-    .nav-link.active { color: var(--text); border-bottom-color: var(--accent2); }
-    .nav-spacer { flex: 1; }
-    .avatar {
-      width: 30px; height: 30px; border-radius: 999px;
-      background: var(--glass-2); border: 1px solid var(--glass-line-strong);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 11px; font-weight: 600; color: var(--text-2); flex: none;
+    .brand-mark svg { width: 15px; height: 15px; color: var(--brand-50); }
+    .brand-word { font-weight: 700; font-size: 17px; letter-spacing: -0.015em; color: var(--text); }
+    .mnav-links { display: flex; align-items: center; gap: 28px; }
+    .mnav-link { font-size: 13.5px; font-weight: 500; color: var(--text-2); }
+    .mnav-spacer { flex: 1; }
+    .mnav-cta {
+      font-size: 13px; font-weight: 600; padding: 8px 15px; border-radius: 7px;
+      background: var(--brand-600); color: var(--brand-50); border: none;
     }
+    .mnav-login { font-size: 13.5px; font-weight: 500; color: var(--text); }
 
-    /* ── page shell ──────────────────────────────────────────────────── */
-    .page { padding: 44px 40px 60px; max-width: 1240px; margin: 0 auto; }
-
+    /* ── hero ────────────────────────────────────────────────────────── */
+    .hero { position: relative; padding: 84px 40px 70px; text-align: center; overflow: hidden; }
+    .hero-wash {
+      position: absolute; left: 50%; top: -180px; width: 900px; height: 560px;
+      transform: translateX(-50%); border-radius: 999px; filter: blur(90px);
+      background: radial-gradient(closest-side, var(--brand-100), transparent 72%);
+      opacity: 0.9; pointer-events: none; z-index: 0;
+    }
+    .hero-inner { position: relative; z-index: 1; max-width: 680px; margin: 0 auto; }
     .eyebrow {
-      font-size: 11px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase;
-      color: var(--text-3); display: flex; align-items: center; gap: 8px;
+      font-family: "JetBrains Mono", monospace; font-size: 11px; font-weight: 500;
+      letter-spacing: 0.09em; text-transform: uppercase; color: var(--text-3);
+      display: flex; align-items: center; justify-content: center; gap: 8px;
     }
-    .eyebrow .dot { width: 5px; height: 5px; border-radius: 999px; background: var(--accent2); box-shadow: 0 0 8px var(--accent2); }
-
-    .tile { margin-top: 14px; display: flex; flex-direction: column; gap: 22px; }
-    .tile-head h1 { margin: 6px 0 4px; font-size: 26px; font-weight: 700; letter-spacing: -0.015em; }
-    .tile-head p { margin: 0; font-size: 14px; color: var(--text-2); max-width: 640px; line-height: 1.55; }
-
-    .swatch-row { display: flex; gap: 10px; flex-wrap: wrap; }
-    .swatch { width: 92px; display: flex; flex-direction: column; gap: 8px; }
-    .swatch-chip { height: 52px; border-radius: 10px; border: 1px solid var(--glass-line-strong); }
-    .swatch-label { font-size: 10.5px; color: var(--text-3); line-height: 1.3; }
-
-    .type-sample { display: flex; gap: 40px; padding: 20px 0 4px; border-top: 1px solid var(--glass-line); }
-    .type-sample .display-lg { font-weight: 700; font-size: 29px; letter-spacing: -0.02em; line-height: 1.12; margin: 0 0 6px; }
-    .type-sample .body-copy { font-size: 13.5px; color: var(--text-2); line-height: 1.6; max-width: 360px; margin: 0; }
-    .type-sample .col { flex: none; }
-    .type-sample .label { font-size: 10.5px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
-
-    .controls-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 4px; }
-    .btn { font-size: 13px; font-weight: 600; padding: 10px 18px; border-radius: 999px; border: 1px solid transparent; cursor: pointer; }
-    .btn-primary {
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      color: #0a0a12;
-      box-shadow: 0 8px 24px -8px var(--accent);
+    .eyebrow .dot { width: 5px; height: 5px; border-radius: 999px; background: var(--brand-500); }
+    .hero h1 {
+      font-size: 44px; font-weight: 700; letter-spacing: -0.025em; line-height: 1.1;
+      margin: 18px 0 16px; text-wrap: balance;
     }
-    .btn-secondary { background: var(--glass); color: var(--text); border-color: var(--glass-line-strong); backdrop-filter: blur(10px); }
-    .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; padding: 3px 10px 3px 8px; border-radius: 999px; border: 1px solid transparent; }
-    .pill i { width: 6px; height: 6px; border-radius: 999px; }
-    .pill-high { color: var(--risk-high); background: var(--risk-high-soft); border-color: var(--risk-high-line); }
-    .pill-high i { background: var(--risk-high); box-shadow: 0 0 6px var(--risk-high); }
-    .pill-med { color: var(--risk-med); background: var(--risk-med-soft); border-color: var(--risk-med-line); }
-    .pill-med i { background: var(--risk-med); box-shadow: 0 0 6px var(--risk-med); }
-    .pill-low { color: var(--risk-low); background: var(--risk-low-soft); border-color: var(--risk-low-line); }
-    .pill-low i { background: var(--risk-low); box-shadow: 0 0 6px var(--risk-low); }
-    .input { font-size: 13px; padding: 9px 14px; border-radius: 999px; border: 1px solid var(--glass-line-strong); background: var(--glass); color: var(--text); width: 200px; backdrop-filter: blur(10px); }
+    .hero p.sub {
+      font-size: 16px; color: var(--text-2); line-height: 1.6; margin: 0 auto 30px;
+      max-width: 540px;
+    }
+    .hero-ctas { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 30px; }
+    .btn { font-size: 13.5px; font-weight: 600; padding: 11px 20px; border-radius: 8px; border: 1px solid transparent; cursor: pointer; }
+    .btn-primary { background: var(--brand-600); color: var(--brand-50); box-shadow: 0 10px 24px -10px oklch(46% var(--brand-c) var(--brand-h) / 0.55); }
+    .btn-secondary { background: var(--surface); color: var(--text); border-color: var(--border); }
+    .trust-row { display: flex; align-items: center; justify-content: center; gap: 22px; flex-wrap: wrap; }
+    .trust-item { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-3); }
+    .trust-item svg { width: 14px; height: 14px; color: var(--text-3); flex: none; }
 
-    /* ── prototype: dashboard ────────────────────────────────────────── */
-    .proto { margin-top: 46px; padding-top: 34px; border-top: 1px solid var(--glass-line); }
+    /* hero product card */
+    .hero-card {
+      position: relative; z-index: 1; max-width: 620px; margin: 44px auto 0;
+      background: var(--surface); border: 1px solid var(--border-soft); border-radius: 14px;
+      box-shadow: 0 1px 2px oklch(21% 0.012 var(--brand-h) / 0.04), 0 30px 60px -28px oklch(21% 0.012 var(--brand-h) / 0.22);
+      text-align: left; overflow: hidden;
+    }
+    .hc-head { display: flex; align-items: center; gap: 10px; padding: 16px 20px; border-bottom: 1px solid var(--border-soft); }
+    .hc-head svg { width: 15px; height: 15px; color: var(--text-3); flex: none; }
+    .hc-name { font-size: 13px; font-weight: 600; color: var(--text); }
+    .hc-sub { font-size: 11.5px; color: var(--text-3); margin-top: 1px; }
+    .hc-spacer { flex: 1; }
+    .hc-tag {
+      font-family: "JetBrains Mono", monospace; font-size: 10px; font-weight: 600; letter-spacing: 0.02em;
+      padding: 3px 8px; border-radius: 999px; border: 1px solid oklch(54% 0.13 26 / 0.35); color: var(--risk-high);
+    }
+    .hc-body { padding: 22px 24px 26px; font-size: 14px; line-height: 1.85; color: var(--text-2); }
+    .hc-del { text-decoration: line-through; text-decoration-color: oklch(54% 0.13 26 / 0.6); color: var(--text-3); }
+    .hc-ins { color: var(--text); background: linear-gradient(transparent 58%, oklch(54% var(--brand-c) var(--brand-h) / 0.18) 58%); border-radius: 2px; padding: 0 2px; }
+    .hc-note {
+      margin-top: 16px; display: flex; align-items: flex-start; gap: 9px;
+      padding: 11px 13px; border-radius: 9px; background: var(--surface-2); border: 1px solid var(--border-soft);
+    }
+    .hc-note svg { width: 14px; height: 14px; color: var(--risk-high); flex: none; margin-top: 1px; }
+    .hc-note-text { font-size: 12px; color: var(--text-2); line-height: 1.5; }
+    .hc-note-text b { color: var(--text); font-weight: 600; }
+    .hc-note-ref { font-family: "JetBrains Mono", monospace; font-size: 10.5px; color: var(--text-3); }
+
+    /* ── section shell ───────────────────────────────────────────────── */
+    .section { padding: 60px 40px; max-width: 1240px; margin: 0 auto; }
+    .section-head { text-align: center; margin-bottom: 34px; }
+    .section-head .eyebrow { justify-content: center; }
+    .section-head h2 { margin: 10px 0 8px; font-size: 24px; font-weight: 700; letter-spacing: -0.015em; }
+    .section-head p { margin: 0 auto; max-width: 520px; font-size: 13.5px; color: var(--text-2); line-height: 1.6; }
+    .rule { border: none; border-top: 1px solid var(--border-soft); max-width: 1240px; margin: 0 auto; }
+
+    /* ── brand system tile ──────────────────────────────────────────── */
+    .ramp-bar {
+      height: 46px; border-radius: 10px; margin-bottom: 12px;
+      background: linear-gradient(90deg,
+        oklch(97% var(--brand-c) var(--brand-h)) 0%,
+        oklch(92.5% var(--brand-c) var(--brand-h)) 10%,
+        oklch(85% var(--brand-c) var(--brand-h)) 20%,
+        oklch(75% var(--brand-c) var(--brand-h)) 33%,
+        oklch(64% var(--brand-c) var(--brand-h)) 46%,
+        oklch(54% var(--brand-c) var(--brand-h)) 58%,
+        oklch(46% var(--brand-c) var(--brand-h)) 68%,
+        oklch(38% var(--brand-c) var(--brand-h)) 78%,
+        oklch(29% var(--brand-c) var(--brand-h)) 89%,
+        oklch(21% var(--brand-c) var(--brand-h)) 100%);
+      border: 1px solid var(--border-soft);
+    }
+    .ramp-ticks { display: flex; justify-content: space-between; padding: 0 2px 24px; }
+    .ramp-tick { font-family: "JetBrains Mono", monospace; font-size: 10px; color: var(--text-3); }
+    .ramp-tick.base { color: var(--brand-600); font-weight: 600; }
+
+    .sys-grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 40px; padding-top: 8px; }
+    .sys-col .label {
+      font-family: "JetBrains Mono", monospace; font-size: 10.5px; color: var(--text-3);
+      text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 12px;
+    }
+    .type-a { font-size: 27px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.16; margin: 0 0 10px; }
+    .type-b { font-size: 13.5px; color: var(--text-2); line-height: 1.65; margin: 0; max-width: 400px; }
+    .gradient-swatch {
+      height: 80px; border-radius: 12px; margin-top: 18px;
+      background: linear-gradient(120deg, var(--brand-300), var(--brand-700));
+    }
+    .gradient-caption { font-size: 11.5px; color: var(--text-3); margin-top: 8px; }
+
+    .controls-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 2px; }
+    .input { font-size: 13px; padding: 9px 13px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); width: 188px; }
+    .risk-legend { display: flex; align-items: center; gap: 16px; padding-top: 4px; }
+    .risk-item { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-2); }
+    .risk-item i { width: 6px; height: 6px; border-radius: 999px; flex: none; }
+    .risk-item.high i { background: var(--risk-high); }
+    .risk-item.med i { background: var(--risk-med); }
+    .risk-item.low i { background: var(--risk-low); }
+
+    /* ── product nav + dashboard ─────────────────────────────────────── */
+    .pnav {
+      display: flex; align-items: center; gap: 34px; padding: 0 28px; height: 58px;
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .pnav-links { display: flex; align-items: center; gap: 4px; }
+    .pnav-link { font-size: 13px; font-weight: 500; color: var(--text-3); padding: 7px 12px; border-radius: 7px; }
+    .pnav-link.active { color: var(--brand-700); background: var(--brand-50); }
+    .pnav-spacer { flex: 1; }
+    .pnav-avatar {
+      width: 28px; height: 28px; border-radius: 999px; background: var(--brand-50); color: var(--brand-700);
+      display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex: none;
+    }
+
     .proto-frame {
-      margin-top: 18px;
-      background: var(--glass);
-      border: 1px solid var(--glass-line);
-      border-radius: 20px;
-      overflow: hidden;
-      backdrop-filter: blur(22px);
-      box-shadow: 0 30px 70px -30px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06);
+      background: var(--surface); border: 1px solid var(--border-soft); border-radius: 14px; overflow: hidden;
+      box-shadow: 0 1px 2px oklch(21% 0.012 var(--brand-h) / 0.03), 0 24px 54px -30px oklch(21% 0.012 var(--brand-h) / 0.18);
     }
-    .proto-header { display: flex; align-items: center; justify-content: space-between; padding: 26px 28px 18px; }
-    .proto-header h2 { margin: 0; font-family: "Sora", sans-serif; font-weight: 700; font-size: 20px; letter-spacing: -0.01em; }
+    .proto-header { display: flex; align-items: center; justify-content: space-between; padding: 24px 26px 16px; }
+    .proto-header h3 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
     .upload-btn {
-      display: inline-flex; align-items: center; gap: 8px;
-      background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #0a0a12;
-      font-size: 13px; font-weight: 700; padding: 10px 16px; border-radius: 999px; border: none;
-      box-shadow: 0 8px 22px -8px var(--accent);
+      display: inline-flex; align-items: center; gap: 7px; background: var(--brand-600); color: var(--brand-50);
+      font-size: 12.5px; font-weight: 600; padding: 9px 14px; border-radius: 8px; border: none;
     }
-    .upload-btn svg { width: 15px; height: 15px; }
+    .upload-btn svg { width: 14px; height: 14px; }
 
-    .stat-row { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 14px; padding: 0 28px 22px; }
-    .stat { display: flex; flex-direction: column; gap: 7px; padding: 15px 16px; border: 1px solid var(--glass-line); border-radius: 14px; background: rgba(255,255,255,0.03); }
-    .stat-label { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--text-3); }
-    .stat-label svg { width: 14px; height: 14px; }
-    .stat-value { font-family: "Sora", sans-serif; font-size: 24px; font-weight: 700; letter-spacing: -0.02em; }
+    .stat-row { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; padding: 0 26px 20px; }
+    .stat { display: flex; flex-direction: column; gap: 6px; padding: 14px 15px; border: 1px solid var(--border-soft); border-radius: 10px; background: var(--surface-2); }
+    .stat-label { font-size: 11px; color: var(--text-3); }
+    .stat-value { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
 
-    .toolbar { display: flex; align-items: center; justify-content: space-between; padding: 0 28px 16px; }
-    .seg { display: inline-flex; padding: 3px; background: rgba(255,255,255,0.04); border: 1px solid var(--glass-line); border-radius: 999px; }
-    .seg-btn { border: 0; background: transparent; color: var(--text-3); font-size: 12px; font-weight: 500; padding: 6px 13px; border-radius: 999px; }
-    .seg-btn.on { background: var(--glass-2); color: var(--text); }
-    .search { display: flex; align-items: center; gap: 8px; border: 1px solid var(--glass-line); border-radius: 999px; padding: 7px 13px; color: var(--text-3); font-size: 12.5px; }
-    .search svg { width: 14px; height: 14px; }
+    .toolbar { display: flex; align-items: center; justify-content: space-between; padding: 0 26px 14px; }
+    .seg { display: inline-flex; padding: 3px; background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: 8px; }
+    .seg-btn { border: 0; background: transparent; color: var(--text-2); font-size: 12px; font-weight: 500; padding: 6px 12px; border-radius: 6px; }
+    .seg-btn.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px oklch(21% 0.012 var(--brand-h) / 0.08); }
+    .search { display: flex; align-items: center; gap: 7px; border: 1px solid var(--border-soft); border-radius: 8px; padding: 7px 11px; color: var(--text-3); font-size: 12px; }
+    .search svg { width: 13px; height: 13px; }
 
     table { width: 100%; border-collapse: collapse; }
     thead th {
       text-align: left; font-size: 10.5px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
-      color: var(--text-3); padding: 10px 28px; border-top: 1px solid var(--glass-line); border-bottom: 1px solid var(--glass-line);
+      color: var(--text-3); padding: 10px 26px; border-top: 1px solid var(--border-soft); border-bottom: 1px solid var(--border-soft);
     }
-    tbody td { padding: 15px 28px; border-bottom: 1px solid var(--glass-line); font-size: 13.5px; vertical-align: middle; }
+    tbody td { padding: 14px 26px; border-bottom: 1px solid var(--border-soft); font-size: 13.5px; vertical-align: middle; }
     tbody tr:last-child td { border-bottom: none; }
     .c-name { font-weight: 600; color: var(--text); }
     .c-sub { font-size: 12px; color: var(--text-3); margin-top: 2px; }
     .c-type { color: var(--text-2); }
     .status { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-2); }
     .status .dot { width: 6px; height: 6px; border-radius: 999px; flex: none; }
-    .status .dot.settled { background: var(--risk-low); box-shadow: 0 0 6px var(--risk-low); }
-    .status .dot.open { background: var(--risk-med); box-shadow: 0 0 6px var(--risk-med); }
+    .status .dot.settled { background: var(--risk-low); }
+    .status .dot.open { background: var(--risk-med); }
     .c-date { color: var(--text-3); font-size: 12.5px; }
   </style>
 </helmet>
 
-<div class="wrap" style="--accent: {{accent}}; --accent2: {{accent2}}">
-  <div class="aurora"></div>
-  <div class="content">
+<div class="wrap" style="--brand-h: {{hue}}; --brand-c: {{chroma}}">
 
-  <nav class="nav">
+  <nav class="mnav">
     <div class="brand">
       <div class="brand-mark">
         <svg viewBox="0 0 24 24" fill="none"><path d="M6 3.5h9l4.5 4.5V20a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
       </div>
       <span class="brand-word">Lexora</span>
     </div>
-    <div class="nav-links">
-      <span class="nav-link active">Dashboard</span>
-      <span class="nav-link">Clauses</span>
-      <span class="nav-link">Risk</span>
-      <span class="nav-link">Playbooks</span>
-      <span class="nav-link">Templates</span>
+    <div class="mnav-links">
+      <span class="mnav-link">Product</span>
+      <span class="mnav-link">Pricing</span>
+      <span class="mnav-link">Security</span>
     </div>
-    <div class="nav-spacer"></div>
-    <div class="avatar">JM</div>
+    <div class="mnav-spacer"></div>
+    <span class="mnav-login">Log in</span>
+    <button class="mnav-cta">Start free review</button>
   </nav>
 
-  <div class="page">
-    <div class="eyebrow"><span class="dot"></span>Design system — direction two</div>
-
-    <div class="tile">
-      <div class="tile-head">
-        <h1 class="display-lg display">Glass Aurora</h1>
-        <p>A dark, luminous system for an AI-native product: frosted glass panels floating over a soft aurora mesh, a violet-to-teal gradient doing the work a solid brand colour can't. Confident, alive, a little futuristic.</p>
+  <section class="hero">
+    <div class="hero-wash"></div>
+    <div class="hero-inner">
+      <div class="eyebrow"><span class="dot"></span>AI contract review · Germany</div>
+      <h1>Contracts reviewed with <span class="grad-text">confidence.</span></h1>
+      <p class="sub">Lexora reads every clause against German rental law, flags what's non-standard, and drafts the fix — so review takes minutes, not a billable afternoon.</p>
+      <div class="hero-ctas">
+        <button class="btn btn-primary">Start free review</button>
+        <button class="btn btn-secondary">See how it works</button>
       </div>
+      <div class="trust-row">
+        <div class="trust-item"><svg viewBox="0 0 24 24" fill="none"><rect x="5" y="10.5" width="14" height="9.5" rx="1.5" stroke="currentColor" stroke-width="1.6"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" stroke="currentColor" stroke-width="1.6"/></svg>Data hosted in the EU</div>
+        <div class="trust-item"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6l8-3Z" stroke="currentColor" stroke-width="1.6"/></svg>Built for BGB rental law</div>
+        <div class="trust-item"><svg viewBox="0 0 24 24" fill="none"><path d="M4 12h6M14 12h6M9 7l-4 5 4 5M15 7l4 5-4 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Redlines, not just flags</div>
+      </div>
+    </div>
 
-      <div>
-        <div class="type-sample" style="border-top:none;padding-top:0;">
-          <div class="col">
-            <div class="label">Palette</div>
-            <div class="swatch-row">
-              <div class="swatch"><div class="swatch-chip" style="background:var(--bg)"></div><div class="swatch-label">Background<br>#0a0a12</div></div>
-              <div class="swatch"><div class="swatch-chip" style="background:var(--glass-2);backdrop-filter:blur(10px)"></div><div class="swatch-label">Glass surface</div></div>
-              <div class="swatch"><div class="swatch-chip" style="background:linear-gradient(135deg,var(--accent),var(--accent2))"></div><div class="swatch-label">Accent gradient<br>tweaks ↑</div></div>
-              <div class="swatch"><div class="swatch-chip" style="background:var(--risk-high)"></div><div class="swatch-label">Risk · high</div></div>
-              <div class="swatch"><div class="swatch-chip" style="background:var(--risk-med)"></div><div class="swatch-label">Risk · med</div></div>
-              <div class="swatch"><div class="swatch-chip" style="background:var(--risk-low)"></div><div class="swatch-label">Risk · low</div></div>
-            </div>
-          </div>
+    <div class="hero-card">
+      <div class="hc-head">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M6 3.5h9l4.5 4.5V20a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.6"/></svg>
+        <div>
+          <div class="hc-name">Mietvertrag_Musterstrasse_12.pdf</div>
+          <div class="hc-sub">§ 4 · Miete und Nebenkosten</div>
         </div>
-
-        <div class="type-sample">
-          <div class="col" style="width:340px;">
-            <div class="label">Display — Sora</div>
-            <p class="display-lg display">Every clause, reviewed in minutes.</p>
-          </div>
-          <div class="col" style="width:360px;">
-            <div class="label">Body — Manrope</div>
-            <p class="body-copy">Lexora reads the full agreement, flags what's non-standard against German rental law, and drafts the correction — so review takes minutes, not a billable afternoon.</p>
-          </div>
+        <div class="hc-spacer"></div>
+        <span class="hc-tag">3 flags</span>
+      </div>
+      <div class="hc-body">
+        Die Miete erhöht sich jährlich um <span class="hc-del">5,5 %</span><span class="hc-ins">3,0 %</span> des jeweils gültigen Mietzinses, beginnend mit dem zweiten Mietjahr.
+        <div class="hc-note">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M12 9v4M12 16.5h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" stroke="currentColor" stroke-width="1.6"/></svg>
+          <div class="hc-note-text"><b>Index clause exceeds the statutory cap.</b> §&nbsp;557b BGB limits indexed increases — redrafted to the compliant rate. <span class="hc-note-ref">§ 557b BGB</span></div>
         </div>
+      </div>
+    </div>
+  </section>
 
-        <div class="controls-row" style="border-top:1px solid var(--glass-line);padding-top:20px;">
+  <hr class="rule" />
+
+  <section class="section">
+    <div class="section-head">
+      <div class="eyebrow"><span class="dot"></span>Brand system</div>
+      <h2>One hue, ten shades</h2>
+      <p>A single custom color — not borrowed from anyone else in the category — expressed as a full tonal ramp. Drag the tweaks above the canvas to rotate the hue or dial the intensity; everything below follows.</p>
+    </div>
+
+    <div class="ramp-bar"></div>
+    <div class="ramp-ticks">
+      <span class="ramp-tick">50</span>
+      <span class="ramp-tick">100</span>
+      <span class="ramp-tick">200</span>
+      <span class="ramp-tick">300</span>
+      <span class="ramp-tick">400</span>
+      <span class="ramp-tick base">500 · base</span>
+      <span class="ramp-tick">600</span>
+      <span class="ramp-tick">700</span>
+      <span class="ramp-tick">800</span>
+      <span class="ramp-tick">900</span>
+    </div>
+
+    <div class="sys-grid">
+      <div class="sys-col">
+        <div class="label">Type — Instrument Sans / JetBrains Mono</div>
+        <p class="type-a">Every clause,<br>reviewed in minutes.</p>
+        <p class="type-b">Lexora reads the full agreement, flags what's non-standard, and drafts the correction — grounded in German rental law, not generic boilerplate.</p>
+        <div class="gradient-swatch"></div>
+        <div class="gradient-caption">Monochromatic gradient — same hue, light to dark. Used sparingly: hero accents, primary CTAs.</div>
+      </div>
+      <div class="sys-col">
+        <div class="label">Components</div>
+        <div class="controls-row">
           <button class="btn btn-primary">Upload contract</button>
           <button class="btn btn-secondary">View playbook</button>
-          <span class="pill pill-high"><i></i>High risk</span>
-          <span class="pill pill-med"><i></i>Medium risk</span>
-          <span class="pill pill-low"><i></i>Low risk</span>
+        </div>
+        <div class="controls-row" style="padding-top:14px;">
           <input class="input" placeholder="Search contracts…" />
         </div>
+        <div class="label" style="margin-top:22px;">Risk — dot, not a badge</div>
+        <div class="risk-legend">
+          <span class="risk-item high"><i></i>High</span>
+          <span class="risk-item med"><i></i>Medium</span>
+          <span class="risk-item low"><i></i>Low</span>
+        </div>
       </div>
     </div>
+  </section>
 
-    <div class="proto">
-      <div class="eyebrow"><span class="dot"></span>Prototype — contract dashboard</div>
+  <hr class="rule" />
 
-      <div class="proto-frame">
-        <div class="proto-header">
-          <h2>Contracts</h2>
-          <button class="upload-btn">
-            <svg viewBox="0 0 24 24" fill="none"><path d="M12 15V4M12 4l-4 4M12 4l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-            Upload contract
-          </button>
-        </div>
-
-        <div class="stat-row">
-          <div class="stat">
-            <span class="stat-label"><svg viewBox="0 0 24 24" fill="none"><path d="M6 3.5h9l4.5 4.5V20a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.6"/></svg>Contracts reviewed</span>
-            <span class="stat-value">128</span>
-          </div>
-          <div class="stat">
-            <span class="stat-label"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6l8-3Z" stroke="currentColor" stroke-width="1.6"/></svg>Open risk flags</span>
-            <span class="stat-value" style="color:var(--risk-high)">14</span>
-          </div>
-          <div class="stat">
-            <span class="stat-label"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.6"/><path d="M12 7.5V12l3 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Avg. review time</span>
-            <span class="stat-value">6 min</span>
-          </div>
-        </div>
-
-        <div class="toolbar">
-          <div class="seg">
-            <button class="seg-btn on">All</button>
-            <button class="seg-btn">In review</button>
-            <button class="seg-btn">Signed</button>
-          </div>
-          <div class="search">
-            <svg viewBox="0 0 24 24" fill="none"><circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="M20 20l-4.3-4.3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-            Search contracts
-          </div>
-        </div>
-
-        <table>
-          <thead>
-            <tr><th>Contract</th><th>Type</th><th>Risk</th><th>Status</th><th>Uploaded</th></tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><div class="c-name">Mietvertrag — Musterstraße 12</div><div class="c-sub">Berlin, Kreuzberg</div></td>
-              <td class="c-type">Wohnraummiete</td>
-              <td><span class="pill pill-high"><i></i>High</span></td>
-              <td><span class="status"><span class="dot open"></span>In review</span></td>
-              <td class="c-date">2 days ago</td>
-            </tr>
-            <tr>
-              <td><div class="c-name">Untermietvertrag — Prenzlauer Berg</div><div class="c-sub">Berlin</div></td>
-              <td class="c-type">Untermiete</td>
-              <td><span class="pill pill-med"><i></i>Medium</span></td>
-              <td><span class="status"><span class="dot open"></span>In review</span></td>
-              <td class="c-date">4 days ago</td>
-            </tr>
-            <tr>
-              <td><div class="c-name">Gewerbemietvertrag — Altstadt</div><div class="c-sub">Hamburg</div></td>
-              <td class="c-type">Gewerberaum</td>
-              <td><span class="pill pill-low"><i></i>Low</span></td>
-              <td><span class="status"><span class="dot settled"></span>Resolved</span></td>
-              <td class="c-date">1 week ago</td>
-            </tr>
-            <tr>
-              <td><div class="c-name">Mietvertrag — Schwabing</div><div class="c-sub">München</div></td>
-              <td class="c-type">Wohnraummiete</td>
-              <td><span class="pill pill-low"><i></i>Clear</span></td>
-              <td><span class="status"><span class="dot settled"></span>Signed</span></td>
-              <td class="c-date">2 weeks ago</td>
-            </tr>
-            <tr>
-              <td><div class="c-name">Zeitmietvertrag — Ehrenfeld</div><div class="c-sub">Köln</div></td>
-              <td class="c-type">Befristete Miete</td>
-              <td><span class="pill pill-med"><i></i>Medium</span></td>
-              <td><span class="status"><span class="dot open"></span>In review</span></td>
-              <td class="c-date">3 weeks ago</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+  <section class="section" style="padding-bottom:70px;">
+    <div class="section-head">
+      <div class="eyebrow"><span class="dot"></span>Product</div>
+      <h2>Contract dashboard</h2>
+      <p>The same one-hue system, applied to the working app. Color is spent on one action per row — everything else stays quiet so the data reads first.</p>
     </div>
-  </div>
-  </div>
+
+    <div class="proto-frame">
+      <nav class="pnav">
+        <span class="pnav-links">
+          <span class="pnav-link active">Dashboard</span>
+          <span class="pnav-link">Clauses</span>
+          <span class="pnav-link">Risk</span>
+          <span class="pnav-link">Playbooks</span>
+          <span class="pnav-link">Templates</span>
+        </span>
+        <span class="pnav-spacer"></span>
+        <span class="pnav-avatar">JM</span>
+      </nav>
+
+      <div class="proto-header">
+        <h3>Contracts</h3>
+        <button class="upload-btn">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M12 15V4M12 4l-4 4M12 4l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          Upload contract
+        </button>
+      </div>
+
+      <div class="stat-row">
+        <div class="stat"><span class="stat-label">Contracts reviewed</span><span class="stat-value">128</span></div>
+        <div class="stat"><span class="stat-label">Open risk flags</span><span class="stat-value">14</span></div>
+        <div class="stat"><span class="stat-label">Avg. review time</span><span class="stat-value">6 min</span></div>
+      </div>
+
+      <div class="toolbar">
+        <div class="seg">
+          <button class="seg-btn on">All</button>
+          <button class="seg-btn">In review</button>
+          <button class="seg-btn">Signed</button>
+        </div>
+        <div class="search">
+          <svg viewBox="0 0 24 24" fill="none"><circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="M20 20l-4.3-4.3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          Search contracts
+        </div>
+      </div>
+
+      <table>
+        <thead><tr><th>Contract</th><th>Type</th><th>Risk</th><th>Status</th><th>Uploaded</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><div class="c-name">Mietvertrag — Musterstraße 12</div><div class="c-sub">Berlin, Kreuzberg</div></td>
+            <td class="c-type">Wohnraummiete</td>
+            <td><span class="risk-item high"><i></i>High</span></td>
+            <td><span class="status"><span class="dot open"></span>In review</span></td>
+            <td class="c-date">2 days ago</td>
+          </tr>
+          <tr>
+            <td><div class="c-name">Untermietvertrag — Prenzlauer Berg</div><div class="c-sub">Berlin</div></td>
+            <td class="c-type">Untermiete</td>
+            <td><span class="risk-item med"><i></i>Medium</span></td>
+            <td><span class="status"><span class="dot open"></span>In review</span></td>
+            <td class="c-date">4 days ago</td>
+          </tr>
+          <tr>
+            <td><div class="c-name">Gewerbemietvertrag — Altstadt</div><div class="c-sub">Hamburg</div></td>
+            <td class="c-type">Gewerberaum</td>
+            <td><span class="risk-item low"><i></i>Low</span></td>
+            <td><span class="status"><span class="dot settled"></span>Resolved</span></td>
+            <td class="c-date">1 week ago</td>
+          </tr>
+          <tr>
+            <td><div class="c-name">Mietvertrag — Schwabing</div><div class="c-sub">München</div></td>
+            <td class="c-type">Wohnraummiete</td>
+            <td><span class="risk-item low"><i></i>Clear</span></td>
+            <td><span class="status"><span class="dot settled"></span>Signed</span></td>
+            <td class="c-date">2 weeks ago</td>
+          </tr>
+          <tr>
+            <td><div class="c-name">Zeitmietvertrag — Ehrenfeld</div><div class="c-sub">Köln</div></td>
+            <td class="c-type">Befristete Miete</td>
+            <td><span class="risk-item med"><i></i>Medium</span></td>
+            <td><span class="status"><span class="dot open"></span>In review</span></td>
+            <td class="c-date">3 weeks ago</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
 </div>
 </x-dc>
-<script data-dc-script data-props='{"accent":{"editor":"color","default":"#7c6cf0","options":["#7c6cf0","#a85cf0","#5c7cf0","#c05ce0"],"section":"Theme"},"accent2":{"editor":"color","default":"#34d8c7","options":["#34d8c7","#3cc8e8","#4ed8a0","#34acd8"],"section":"Theme"}}'>
+<script data-dc-script data-props='{"hue":{"editor":"range","default":266,"min":190,"max":300,"step":2,"unit":"°","section":"Brand"},"chroma":{"editor":"range","default":0.15,"min":0.06,"max":0.2,"step":0.01,"section":"Brand"}}'>
 class Component extends DCLogic {
   renderVals() {
     return {
-      accent: this.props.accent ?? '#7c6cf0',
-      accent2: this.props.accent2 ?? '#34d8c7',
+      hue: this.props.hue ?? 266,
+      chroma: this.props.chroma ?? 0.15,
     };
   }
 }

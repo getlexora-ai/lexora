@@ -1,0 +1,11 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "title": "Glass Aurora", "x": 0, "y": 0, "w": 1320, "h": 1400 },
+    { "file": "WarmEditorial.dc.html", "title": "Warm Editorial", "x": 1420, "y": 0, "w": 1320, "h": 1400 },
+    { "file": "StructuredMono.dc.html", "title": "Structured Mono", "x": 2840, "y": 0, "w": 1320, "h": 1400 }
+  ],
+  "annotations": [
+    { "id": "overview-note", "x": 0, "y": -150, "w": 900, "text": "Lexora — new design system, three directions\nEach artboard pairs a compact style tile with the same contract-dashboard prototype, so you can compare them applied to real UI. Use the color chips above each artboard to try different accent shades/gradients. Pick one (or mix pieces) and I'll build it out as the new base system." }
+  ],
+  "launch": { "view": "canvas" }
+}

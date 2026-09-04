@@ -1,0 +1,341 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
+
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+
+    .wrap {
+      --bg: #ffffff;
+      --surface: #ffffff;
+      --field: #f4f4f6;
+      --ink: #0a0a0a;
+      --ink-2: #48484f;
+      --ink-3: #86868f;
+      --line: #d8d8dc;
+      --risk-high: #c42a1f;
+      --risk-high-bg: #c42a1f;
+      --risk-med: #a3690a;
+      --risk-med-bg: #a3690a;
+      --risk-low: #157a45;
+      --risk-low-bg: #157a45;
+
+      font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      width: 100%;
+      position: relative;
+    }
+    .wrap a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+    .wrap a:hover { opacity: 0.75; }
+    .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+
+    /* ── nav ─────────────────────────────────────────────────────────── */
+    .nav {
+      display: flex; align-items: center; gap: 34px;
+      padding: 0 40px; height: 68px;
+      border-bottom: 2px solid var(--ink);
+    }
+    .brand { display: flex; align-items: center; gap: 10px; margin-right: 8px; }
+    .brand-mark {
+      width: 26px; height: 26px; flex: none; background: var(--ink);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .brand-mark svg { width: 15px; height: 15px; color: #fff; }
+    .brand-word { font-weight: 700; font-size: 17px; letter-spacing: -0.01em; }
+    .nav-links { display: flex; align-items: center; gap: 0; }
+    .nav-link {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 12px; font-weight: 500; letter-spacing: 0.02em;
+      color: var(--ink-3); padding: 8px 16px; border-bottom: 2px solid transparent;
+      text-transform: uppercase;
+    }
+    .nav-link.active { color: var(--ink); border-bottom-color: var(--accent); }
+    .nav-spacer { flex: 1; }
+    .avatar {
+      width: 28px; height: 28px; border-radius: 0; border: 1.5px solid var(--ink);
+      display: flex; align-items: center; justify-content: center;
+      font-family: "IBM Plex Mono", monospace; font-size: 11px; font-weight: 600; color: var(--ink); flex: none;
+    }
+
+    /* ── page shell ──────────────────────────────────────────────────── */
+    .page { padding: 44px 40px 60px; max-width: 1240px; margin: 0 auto; }
+
+    .eyebrow {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--ink-3); display: flex; align-items: center; gap: 8px;
+    }
+    .eyebrow .dot { width: 7px; height: 7px; background: var(--accent); }
+
+    .tile { margin-top: 14px; display: flex; flex-direction: column; gap: 22px; }
+    .tile-head h1 { margin: 6px 0 4px; font-size: 27px; font-weight: 700; letter-spacing: -0.015em; }
+    .tile-head p { margin: 0; font-size: 14px; color: var(--ink-2); max-width: 640px; line-height: 1.55; }
+
+    .swatch-row { display: flex; gap: 0; flex-wrap: wrap; border: 1.5px solid var(--ink); width: fit-content; }
+    .swatch { width: 96px; display: flex; flex-direction: column; border-right: 1.5px solid var(--ink); }
+    .swatch:last-child { border-right: none; }
+    .swatch-chip { height: 52px; }
+    .swatch-label {
+      font-family: "IBM Plex Mono", monospace; font-size: 9.5px; color: var(--ink-2);
+      line-height: 1.4; padding: 6px 8px; border-top: 1.5px solid var(--ink);
+    }
+
+    .type-sample { display: flex; gap: 40px; padding: 20px 0 4px; border-top: 1.5px solid var(--ink); }
+    .type-sample .display-lg { font-weight: 700; font-size: 29px; letter-spacing: -0.02em; line-height: 1.12; margin: 0 0 6px; }
+    .type-sample .body-copy { font-size: 13.5px; color: var(--ink-2); line-height: 1.6; max-width: 360px; margin: 0; }
+    .type-sample .col { flex: none; }
+    .type-sample .label {
+      font-family: "IBM Plex Mono", monospace; font-size: 10px; color: var(--ink-3);
+      text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px;
+    }
+
+    .controls-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 4px; }
+    .btn { font-family: "IBM Plex Mono", monospace; font-size: 12.5px; font-weight: 600; letter-spacing: 0.01em; padding: 10px 16px; border-radius: 2px; border: 1.5px solid var(--ink); cursor: pointer; text-transform: uppercase; }
+    .btn-primary { background: var(--accent); color: #ffffff; border-color: var(--accent); }
+    .btn-secondary { background: #fff; color: var(--ink); }
+    .pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-family: "IBM Plex Mono", monospace; font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
+      padding: 3px 9px; border-radius: 2px; text-transform: uppercase; color: #fff;
+    }
+    .pill i { width: 6px; height: 6px; background: #fff; }
+    .pill-high { background: var(--risk-high-bg); }
+    .pill-med { background: var(--risk-med-bg); }
+    .pill-low { background: var(--risk-low-bg); }
+    .input { font-family: "IBM Plex Mono", monospace; font-size: 12.5px; padding: 9px 12px; border-radius: 2px; border: 1.5px solid var(--ink); background: #fff; color: var(--ink); width: 200px; }
+
+    /* ── prototype: dashboard ────────────────────────────────────────── */
+    .proto { margin-top: 46px; padding-top: 34px; border-top: 1.5px solid var(--ink); }
+    .proto-frame {
+      margin-top: 18px;
+      background: var(--surface);
+      border: 1.5px solid var(--ink);
+      border-radius: 0;
+      overflow: hidden;
+    }
+    .proto-header { display: flex; align-items: center; justify-content: space-between; padding: 24px 28px; border-bottom: 1.5px solid var(--ink); }
+    .proto-header h2 { margin: 0; font-weight: 700; font-size: 20px; letter-spacing: -0.01em; }
+    .upload-btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--accent); color: #fff;
+      font-family: "IBM Plex Mono", monospace; font-size: 12px; font-weight: 700; letter-spacing: 0.02em;
+      padding: 10px 15px; border-radius: 2px; border: 1.5px solid var(--accent); text-transform: uppercase;
+    }
+    .upload-btn svg { width: 14px; height: 14px; }
+
+    .stat-row { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 0; border-bottom: 1.5px solid var(--ink); }
+    .stat { display: flex; flex-direction: column; gap: 8px; padding: 18px 24px; border-right: 1.5px solid var(--ink); }
+    .stat:last-child { border-right: none; }
+    .stat-label {
+      display: flex; align-items: center; gap: 7px;
+      font-family: "IBM Plex Mono", monospace; font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-3);
+    }
+    .stat-label svg { width: 13px; height: 13px; }
+    .stat-value { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+
+    .toolbar { display: flex; align-items: center; justify-content: space-between; padding: 16px 28px; border-bottom: 1.5px solid var(--ink); }
+    .seg { display: inline-flex; border: 1.5px solid var(--ink); }
+    .seg-btn {
+      font-family: "IBM Plex Mono", monospace; border: 0; border-right: 1.5px solid var(--ink);
+      background: #fff; color: var(--ink-2); font-size: 11.5px; font-weight: 600; letter-spacing: 0.02em;
+      padding: 7px 14px; text-transform: uppercase;
+    }
+    .seg-btn:last-child { border-right: none; }
+    .seg-btn.on { background: var(--ink); color: #fff; }
+    .search {
+      display: flex; align-items: center; gap: 8px; border: 1.5px solid var(--ink);
+      padding: 7px 12px; color: var(--ink-3); font-family: "IBM Plex Mono", monospace; font-size: 11.5px;
+    }
+    .search svg { width: 13px; height: 13px; }
+
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      text-align: left; font-family: "IBM Plex Mono", monospace; font-size: 10.5px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
+      color: var(--ink-3); padding: 11px 28px; border-bottom: 1.5px solid var(--ink); background: var(--field);
+    }
+    tbody td { padding: 15px 28px; border-bottom: 1px solid var(--line); font-size: 13.5px; vertical-align: middle; }
+    tbody tr:last-child td { border-bottom: none; }
+    .c-name { font-weight: 600; color: var(--ink); }
+    .c-sub { font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--ink-3); margin-top: 3px; }
+    .c-type { color: var(--ink-2); }
+    .status { display: inline-flex; align-items: center; gap: 7px; font-family: "IBM Plex Mono", monospace; font-size: 11.5px; color: var(--ink-2); text-transform: uppercase; }
+    .status .dot { width: 6px; height: 6px; flex: none; }
+    .status .dot.settled { background: var(--risk-low); }
+    .status .dot.open { background: var(--risk-med); }
+    .c-date { color: var(--ink-3); font-family: "IBM Plex Mono", monospace; font-size: 11.5px; }
+  </style>
+</helmet>
+
+<div class="wrap" style="--accent: {{accent}}">
+
+  <nav class="nav">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M6 3.5h9l4.5 4.5V20a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+      </div>
+      <span class="brand-word">Lexora</span>
+    </div>
+    <div class="nav-links">
+      <span class="nav-link active">Dashboard</span>
+      <span class="nav-link">Clauses</span>
+      <span class="nav-link">Risk</span>
+      <span class="nav-link">Playbooks</span>
+      <span class="nav-link">Templates</span>
+    </div>
+    <div class="nav-spacer"></div>
+    <div class="avatar">JM</div>
+  </nav>
+
+  <div class="page">
+    <div class="eyebrow"><span class="dot"></span>Design system — direction three</div>
+
+    <div class="tile">
+      <div class="tile-head">
+        <h1>Structured Mono</h1>
+        <p>A grid-first, high-contrast system built for dense legal data: thick black rules, one deliberate cobalt accent, monospace for anything measured. Reads like a precision instrument, not a marketing site.</p>
+      </div>
+
+      <div>
+        <div class="type-sample" style="border-top:none;padding-top:0;">
+          <div class="col">
+            <div class="label">Palette</div>
+            <div class="swatch-row">
+              <div class="swatch"><div class="swatch-chip" style="background:#fff"></div><div class="swatch-label">SURFACE<br>#ffffff</div></div>
+              <div class="swatch"><div class="swatch-chip" style="background:var(--field)"></div><div class="swatch-label">FIELD<br>#f4f4f6</div></div>
+              <div class="swatch"><div class="swatch-chip" style="background:var(--ink)"></div><div class="swatch-label">INK<br>#0a0a0a</div></div>
+              <div class="swatch"><div class="swatch-chip" style="background:var(--accent)"></div><div class="swatch-label">ACCENT<br>tweak ↑</div></div>
+              <div class="swatch"><div class="swatch-chip" style="background:var(--risk-high)"></div><div class="swatch-label">RISK · HIGH</div></div>
+              <div class="swatch"><div class="swatch-chip" style="background:var(--risk-med)"></div><div class="swatch-label">RISK · MED</div></div>
+              <div class="swatch"><div class="swatch-chip" style="background:var(--risk-low)"></div><div class="swatch-label">RISK · LOW</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="type-sample">
+          <div class="col" style="width:340px;">
+            <div class="label">Display — IBM Plex Sans</div>
+            <p class="display-lg">Every clause, reviewed in minutes.</p>
+          </div>
+          <div class="col" style="width:360px;">
+            <div class="label">Data / labels — IBM Plex Mono</div>
+            <p class="body-copy">Lexora reads the full agreement, flags what's non-standard against German rental law, and drafts the correction — so review takes minutes, not a billable afternoon.</p>
+          </div>
+        </div>
+
+        <div class="controls-row" style="border-top:1.5px solid var(--ink);padding-top:20px;">
+          <button class="btn btn-primary">Upload contract</button>
+          <button class="btn btn-secondary">View playbook</button>
+          <span class="pill pill-high"><i></i>High risk</span>
+          <span class="pill pill-med"><i></i>Medium risk</span>
+          <span class="pill pill-low"><i></i>Low risk</span>
+          <input class="input" placeholder="SEARCH CONTRACTS…" />
+        </div>
+      </div>
+    </div>
+
+    <div class="proto">
+      <div class="eyebrow"><span class="dot"></span>Prototype — contract dashboard</div>
+
+      <div class="proto-frame">
+        <div class="proto-header">
+          <h2>Contracts</h2>
+          <button class="upload-btn">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M12 15V4M12 4l-4 4M12 4l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            Upload contract
+          </button>
+        </div>
+
+        <div class="stat-row">
+          <div class="stat">
+            <span class="stat-label"><svg viewBox="0 0 24 24" fill="none"><path d="M6 3.5h9l4.5 4.5V20a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.6"/></svg>Contracts reviewed</span>
+            <span class="stat-value">128</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6l8-3Z" stroke="currentColor" stroke-width="1.6"/></svg>Open risk flags</span>
+            <span class="stat-value" style="color:var(--risk-high)">14</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.6"/><path d="M12 7.5V12l3 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Avg. review time</span>
+            <span class="stat-value">6 min</span>
+          </div>
+        </div>
+
+        <div class="toolbar">
+          <div class="seg">
+            <button class="seg-btn on">All</button>
+            <button class="seg-btn">In review</button>
+            <button class="seg-btn">Signed</button>
+          </div>
+          <div class="search">
+            <svg viewBox="0 0 24 24" fill="none"><circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="M20 20l-4.3-4.3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+            SEARCH
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr><th>Contract</th><th>Type</th><th>Risk</th><th>Status</th><th>Uploaded</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><div class="c-name">Mietvertrag — Musterstraße 12</div><div class="c-sub">BERLIN, KREUZBERG</div></td>
+              <td class="c-type">Wohnraummiete</td>
+              <td><span class="pill pill-high"><i></i>High</span></td>
+              <td><span class="status"><span class="dot open"></span>In review</span></td>
+              <td class="c-date">2 DAYS AGO</td>
+            </tr>
+            <tr>
+              <td><div class="c-name">Untermietvertrag — Prenzlauer Berg</div><div class="c-sub">BERLIN</div></td>
+              <td class="c-type">Untermiete</td>
+              <td><span class="pill pill-med"><i></i>Medium</span></td>
+              <td><span class="status"><span class="dot open"></span>In review</span></td>
+              <td class="c-date">4 DAYS AGO</td>
+            </tr>
+            <tr>
+              <td><div class="c-name">Gewerbemietvertrag — Altstadt</div><div class="c-sub">HAMBURG</div></td>
+              <td class="c-type">Gewerberaum</td>
+              <td><span class="pill pill-low"><i></i>Low</span></td>
+              <td><span class="status"><span class="dot settled"></span>Resolved</span></td>
+              <td class="c-date">1 WEEK AGO</td>
+            </tr>
+            <tr>
+              <td><div class="c-name">Mietvertrag — Schwabing</div><div class="c-sub">MÜNCHEN</div></td>
+              <td class="c-type">Wohnraummiete</td>
+              <td><span class="pill pill-low"><i></i>Clear</span></td>
+              <td><span class="status"><span class="dot settled"></span>Signed</span></td>
+              <td class="c-date">2 WEEKS AGO</td>
+            </tr>
+            <tr>
+              <td><div class="c-name">Zeitmietvertrag — Ehrenfeld</div><div class="c-sub">KÖLN</div></td>
+              <td class="c-type">Befristete Miete</td>
+              <td><span class="pill pill-med"><i></i>Medium</span></td>
+              <td><span class="status"><span class="dot open"></span>In review</span></td>
+              <td class="c-date">3 WEEKS AGO</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#2554e8","options":["#2554e8","#0a3fd9","#3b6bff","#1e40c4"],"section":"Theme"}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      accent: this.props.accent ?? '#2554e8',
+    };
+  }
+}
+</script>
+</body>
+</html>

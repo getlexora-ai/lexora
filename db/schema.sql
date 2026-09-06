@@ -45,6 +45,14 @@ create type playbook_verdict as enum ('meets', 'fallback', 'redline', 'missing')
 -- db/009: separates a hard compliance defect from a negotiation-position flag.
 create type clause_category  as enum ('compliance', 'negotiation', 'info');
 
+-- Calendar events (see db/012_calendar_events.sql)
+create type calendar_event_kind       as enum ('deadline', 'notice', 'renewal', 'review', 'payment', 'other');
+create type calendar_event_origin     as enum ('manual', 'derived');
+create type calendar_reminder_channel as enum ('email', 'ics_alarm');
+create type reminder_dispatch_status  as enum ('pending', 'sent', 'failed', 'skipped');
+create type calendar_template_source  as enum ('curated', 'user');
+create type calendar_template_anchor  as enum ('contract_start', 'contract_end', 'notice_deadline', 'signature_date', 'custom');
+
 
 -- ============================================================
 -- organisations
@@ -499,3 +507,239 @@ create index consent_events_user_idx
   on consent_events (user_id, created_at desc);
 create unique index consent_events_user_version_uniq
   on consent_events (user_id, policy_version);
+
+
+-- ============================================================
+-- Calendar  (see db/012_calendar_events.sql, docs/calendar/design.md)
+-- ------------------------------------------------------------
+-- Per-user deadlines, renewals and review dates, optionally anchored to a
+-- contract (Kündigungsfrist / notice deadline, Vertragsende, annual review).
+-- The DB is the source of truth; users pull the dates into their real calendar
+-- via a read-only iCalendar subscription (GET /api/calendar/feed/<token>.ics) —
+-- no OAuth, no legal data handed to a US calendar processor, no two-way sync.
+--
+-- Recurrence: ONE row per series holding an RFC 5545 RRULE + EXDATE array;
+-- occurrences are expanded at read time (src/lib/calendar-rrule.ts). Single-
+-- occurrence edits become override child rows, as RFC 5545 models them.
+-- ============================================================
+
+-- ── calendar_event_templates — reusable event skeletons ─────────────────────
+-- "Notice deadline, three months before contract end", "annual review".
+-- Applying one to a contract's key dates produces a derived calendar_events row.
+-- user_id NULL => system-curated, visible to everyone, read-only via the API.
+create table calendar_event_templates (
+  id                 uuid primary key default gen_random_uuid(),
+  user_id            text,                                  -- NULL = system-curated
+  org_id             uuid references organisations (id) on delete cascade,
+
+  name               text not null,                         -- German label (authoritative)
+  name_en            text,
+  description        text,
+
+  kind               calendar_event_kind not null default 'deadline',
+  contract_type      text not null default '',              -- '' = applies to any type
+
+  title_template     text not null,                         -- with {{contract_name}} etc.
+  title_template_en  text,
+
+  -- Anchor + signed ISO-8601 duration. '-P3M' from 'contract_end' is the
+  -- classic three-month Kündigungsfrist deadline. Calendar arithmetic, so this
+  -- stays an ISO string — never seconds.
+  anchor             calendar_template_anchor not null default 'contract_end',
+  offset_iso         text not null default 'P0D',
+
+  all_day            boolean not null default true,
+  default_time       time,                                  -- local start when not all-day
+  default_duration_minutes int not null default 0,          -- 0 => 1 day / 30 min
+  time_zone          text not null default 'Europe/Berlin',
+
+  rrule              text,                                  -- RRULE body, no prefix; NULL = one-off
+
+  default_reminders  text[] not null default '{}',          -- {'-P7D','-P1D'}
+  reminder_channel   calendar_reminder_channel not null default 'ics_alarm',
+
+  source             calendar_template_source not null default 'user',
+  doc_ref            text,                                  -- provenance; unique for curated rows
+  is_default         boolean not null default false,        -- auto-apply to matching contracts
+
+  deleted_at         timestamptz,
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now()
+);
+
+-- A curated template has no owner; every other one must have one.
+alter table calendar_event_templates
+  add constraint calendar_event_templates_owner_ck
+  check ((source = 'curated') = (user_id is null));
+
+create unique index calendar_event_templates_curated_ref_idx
+  on calendar_event_templates (doc_ref) where source = 'curated';
+create index calendar_event_templates_user_idx
+  on calendar_event_templates (user_id, created_at desc) where deleted_at is null;
+create index calendar_event_templates_apply_idx
+  on calendar_event_templates (contract_type) where is_default and deleted_at is null;
+
+create trigger calendar_event_templates_updated_at
+  before update on calendar_event_templates
+  for each row execute function set_updated_at();
+
+
+-- ── calendar_events — one row per SERIES, plus override rows ────────────────
+-- starts_at / ends_at are absolute instants (the first occurrence); ends_at is
+-- EXCLUSIVE, matching RFC 5545 DTEND. `time_zone` is what the recurrence
+-- expands in and what the feed declares: a "3rd of the month" deadline must
+-- stay on the 3rd across the DST switch, which only works if expansion happens
+-- in local wall-clock time.
+create table calendar_events (
+  id                   uuid primary key default gen_random_uuid(),
+  user_id              text not null,                       -- Clerk id; no FK, no RLS
+  contract_id          uuid references contracts (id) on delete cascade,
+  template_id          uuid references calendar_event_templates (id) on delete set null,
+
+  title                text not null,
+  description          text,
+  location             text,
+  kind                 calendar_event_kind not null default 'deadline',
+
+  all_day              boolean not null default true,
+  starts_at            timestamptz not null,
+  ends_at              timestamptz not null,                -- exclusive
+  time_zone            text not null default 'Europe/Berlin',
+
+  rrule                text,                                -- RRULE body, no prefix; NULL = one-off
+  exdates              timestamptz[] not null default '{}', -- cancelled occurrences, by original start
+  -- End of the last possible occurrence, denormalised at write time so a range
+  -- query never expands the rule. NULL => the series never ends.
+  series_end_at        timestamptz,
+
+  recurrence_parent_id uuid references calendar_events (id) on delete cascade,
+  recurrence_id        timestamptz,                         -- original start this row replaces
+  split_from_id        uuid references calendar_events (id) on delete set null,
+
+  origin               calendar_event_origin not null default 'manual',
+  source_key           text,                                -- '<template_id>:contract_end'
+  user_modified        boolean not null default false,      -- user touched a derived row
+
+  deleted_at           timestamptz,
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now()
+);
+
+alter table calendar_events
+  add constraint calendar_events_override_ck
+  check ((recurrence_parent_id is null) = (recurrence_id is null));
+alter table calendar_events
+  add constraint calendar_events_derived_ck
+  check (origin = 'manual' or contract_id is not null);
+alter table calendar_events
+  add constraint calendar_events_span_ck check (ends_at >= starts_at);
+
+-- THE query: user's events overlapping [from, to) —
+--   user_id = $1 and starts_at < $to and (series_end_at is null or series_end_at > $from)
+create index calendar_events_user_range_idx
+  on calendar_events (user_id, starts_at) where deleted_at is null;
+create index calendar_events_contract_idx
+  on calendar_events (contract_id, starts_at)
+  where contract_id is not null and deleted_at is null;
+-- Unique: "two overrides for the same occurrence" is nonsense, and the
+-- PATCH ?scope=this upsert targets this index.
+create unique index calendar_events_override_idx
+  on calendar_events (recurrence_parent_id, recurrence_id)
+  where recurrence_parent_id is not null;
+-- Regeneration upsert target: one derived event per (contract, derivation).
+create unique index calendar_events_source_key_idx
+  on calendar_events (contract_id, source_key)
+  where source_key is not null and deleted_at is null;
+-- Reminder worker scan: cross-user, so it must NOT lead on user_id.
+create index calendar_events_due_scan_idx
+  on calendar_events (starts_at)
+  where deleted_at is null and recurrence_parent_id is null;
+
+create trigger calendar_events_updated_at
+  before update on calendar_events
+  for each row execute function set_updated_at();
+
+
+-- ── calendar_event_reminders — lead-time offsets, one per event ─────────────
+-- Applies to EVERY occurrence, which is why it stores an offset and not a date.
+-- offset_iso is the RFC 5545 TRIGGER value; offset_seconds is the same value
+-- normalised for the due-scan, which is only exact for week/day/hour/minute
+-- components — months and years are rejected in the app layer (a three-month
+-- lead time is a separate derived EVENT, not a reminder).
+create table calendar_event_reminders (
+  id              uuid primary key default gen_random_uuid(),
+  event_id        uuid not null references calendar_events (id) on delete cascade,
+
+  offset_iso      text not null,                            -- '-P7D', '-PT1H'
+  offset_seconds  int  not null,                            -- signed; -604800 for '-P7D'
+  channel         calendar_reminder_channel not null default 'ics_alarm',
+  label           text,                                     -- overrides default VALARM text
+
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now()
+);
+
+create unique index calendar_event_reminders_uniq_idx
+  on calendar_event_reminders (event_id, offset_iso, channel);
+create index calendar_event_reminders_event_idx
+  on calendar_event_reminders (event_id);
+create index calendar_event_reminders_email_idx
+  on calendar_event_reminders (event_id) where channel = 'email';
+
+create trigger calendar_event_reminders_updated_at
+  before update on calendar_event_reminders
+  for each row execute function set_updated_at();
+
+
+-- ── reminder_dispatches — exactly-once ledger ───────────────────────────────
+-- No pre-materialised queue: the worker computes due (reminder, occurrence)
+-- pairs from calendar_events and CLAIMS each with
+--   insert ... on conflict (reminder_id, occurrence_start) do nothing returning id
+-- Winning the insert is the lock, so a race or a crash-retry can never send twice.
+create table reminder_dispatches (
+  id               bigint generated always as identity primary key,
+  reminder_id      uuid not null references calendar_event_reminders (id) on delete cascade,
+  event_id         uuid not null references calendar_events (id) on delete cascade,
+
+  occurrence_start timestamptz not null,
+  fire_at          timestamptz not null,                    -- occurrence_start + offset
+  status           reminder_dispatch_status not null default 'pending',
+  attempts         int not null default 0,
+  error            text,
+
+  created_at       timestamptz not null default now(),
+  sent_at          timestamptz
+);
+
+create unique index reminder_dispatches_once_idx
+  on reminder_dispatches (reminder_id, occurrence_start);
+create index reminder_dispatches_pending_idx
+  on reminder_dispatches (fire_at) where status in ('pending', 'failed');
+create index reminder_dispatches_event_idx
+  on reminder_dispatches (event_id, occurrence_start);
+
+
+-- ── calendar_feed_tokens — bearer credential for the .ics subscription ──────
+-- A calendar app cannot run a Clerk session, so the URL itself is the
+-- credential. A dedicated table rather than a per-user settings column:
+-- rotation wants more than one live token at a time, revocation should be a
+-- DELETE not a row rewrite, and this is the hottest unauthenticated lookup in
+-- the product — a narrow table with one unique index is the cheapest probe.
+create table calendar_feed_tokens (
+  id              uuid primary key default gen_random_uuid(),
+  user_id         text not null,                            -- Clerk id
+  token           text not null,                            -- 32 random bytes, base64url
+  label           text,                                     -- "iPhone", "Outlook"
+
+  last_used_at    timestamptz,
+  last_user_agent text,
+  use_count       bigint not null default 0,
+
+  revoked_at      timestamptz,
+  created_at      timestamptz not null default now()
+);
+
+create unique index calendar_feed_tokens_token_idx
+  on calendar_feed_tokens (token);
+create index calendar_feed_tokens_user_idx
+  on calendar_feed_tokens (user_id) where revoked_at is null;
